@@ -27,6 +27,7 @@ interface GoalCreatedMessage extends BaseMessage {
 interface GoalCompletedMessage extends BaseMessage {
   readonly type: "goal.completed"
   readonly goalId: GoalId
+  readonly costUsd: number
 }
 
 interface GoalAbandonedMessage extends BaseMessage {
@@ -54,11 +55,13 @@ interface TaskAssignedMessage extends BaseMessage {
 interface TaskCompletedMessage extends BaseMessage {
   readonly type: "task.completed"
   readonly taskId: TaskId
+  readonly agentId: AgentId
 }
 
 interface TaskFailedMessage extends BaseMessage {
   readonly type: "task.failed"
   readonly taskId: TaskId
+  readonly agentId: AgentId
   readonly reason: string
 }
 
@@ -90,6 +93,9 @@ interface CodeCompletedMessage extends BaseMessage {
   readonly type: "code.completed"
   readonly taskId: TaskId
   readonly artifactId: ArtifactId
+  readonly branch: string
+  readonly filesChanged: number
+  readonly testsWritten: number
 }
 
 interface BranchPushedMessage extends BaseMessage {
@@ -102,12 +108,14 @@ interface BranchMergedMessage extends BaseMessage {
   readonly type: "branch.merged"
   readonly taskId: TaskId
   readonly branch: string
+  readonly commit: string
 }
 
 interface BranchDiscardedMessage extends BaseMessage {
   readonly type: "branch.discarded"
   readonly taskId: TaskId
   readonly branch: string
+  readonly reason: string
 }
 
 // ---------------------------------------------------------------------------
@@ -116,12 +124,13 @@ interface BranchDiscardedMessage extends BaseMessage {
 interface BuildPassedMessage extends BaseMessage {
   readonly type: "build.passed"
   readonly taskId: TaskId
+  readonly durationMs: number
 }
 
 interface BuildFailedMessage extends BaseMessage {
   readonly type: "build.failed"
   readonly taskId: TaskId
-  readonly logs: string
+  readonly error: string
 }
 
 interface TestReportCreatedMessage extends BaseMessage {
@@ -143,7 +152,7 @@ interface ReviewRejectedMessage extends BaseMessage {
   readonly type: "review.rejected"
   readonly taskId: TaskId
   readonly reviewerId: AgentId
-  readonly feedback: string
+  readonly reasons: ReadonlyArray<string>
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +162,8 @@ interface BudgetExceededMessage extends BaseMessage {
   readonly type: "budget.exceeded"
   readonly taskId: TaskId
   readonly agentId: AgentId
+  readonly tokensUsed: number
+  readonly budgetMax: number
 }
 
 // ---------------------------------------------------------------------------
@@ -162,17 +173,22 @@ interface AgentPromptUpdatedMessage extends BaseMessage {
   readonly type: "agent.prompt.updated"
   readonly agentId: AgentId
   readonly role: AgentRole
+  readonly diff: string
+  readonly reason: string
 }
 
 interface SkillUpdatedMessage extends BaseMessage {
   readonly type: "skill.updated"
   readonly skillId: string
+  readonly diff: string
+  readonly reason: string
 }
 
 interface InsightGeneratedMessage extends BaseMessage {
   readonly type: "insight.generated"
-  readonly agentId: AgentId
-  readonly content: string
+  readonly insightId: string
+  readonly recommendation: string
+  readonly confidence: number
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +196,9 @@ interface InsightGeneratedMessage extends BaseMessage {
 // ---------------------------------------------------------------------------
 interface CeoOverrideMessage extends BaseMessage {
   readonly type: "ceo.override"
-  readonly instruction: string
+  readonly taskId: TaskId
+  readonly action: string
+  readonly reason: string
 }
 
 interface ScheduleIdeationMessage extends BaseMessage {
@@ -192,6 +210,7 @@ interface AgentStuckMessage extends BaseMessage {
   readonly agentId: AgentId
   readonly taskId: TaskId
   readonly reason: string
+  readonly retryCount: number
 }
 
 // ---------------------------------------------------------------------------
@@ -240,5 +259,27 @@ export function matchesFilter(message: Message, filter: MessageFilter): boolean 
       return false
     }
   }
+
+  if (filter.agentId) {
+    const msgAgentId = "agentId" in message ? (message as { agentId: AgentId }).agentId : undefined
+    if (msgAgentId !== undefined && msgAgentId !== filter.agentId) {
+      return false
+    }
+  }
+
+  if (filter.taskId) {
+    const msgTaskId = "taskId" in message ? (message as { taskId: TaskId }).taskId : undefined
+    if (msgTaskId !== undefined && msgTaskId !== filter.taskId) {
+      return false
+    }
+  }
+
+  if (filter.goalId) {
+    const msgGoalId = "goalId" in message ? (message as { goalId: GoalId }).goalId : undefined
+    if (msgGoalId !== undefined && msgGoalId !== filter.goalId) {
+      return false
+    }
+  }
+
   return true
 }
