@@ -21,13 +21,15 @@ export interface Task {
   readonly version: number
   readonly artifacts: readonly ArtifactId[]
   readonly parentTaskId: TaskId | null
+  readonly retryCount: number
+  readonly branch: string | null
 }
 
 // Terminal states have no outgoing transitions
 export const ALLOWED_TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
   queued: ["in_progress", "discarded"],
   in_progress: ["review", "discarded"],
-  review: ["approved", "in_progress", "discarded"],
+  review: ["approved", "in_progress", "merged", "discarded"],
   approved: ["merged", "discarded"],
   merged: [],
   discarded: [],
@@ -53,6 +55,8 @@ export interface CreateTaskParams {
   version?: number
   artifacts?: readonly ArtifactId[]
   parentTaskId?: TaskId | null
+  retryCount?: number
+  branch?: string | null
 }
 
 export function createTask(params: CreateTaskParams): Task {
@@ -68,5 +72,7 @@ export function createTask(params: CreateTaskParams): Task {
     version: params.version ?? 1,
     artifacts: params.artifacts ?? [],
     parentTaskId: params.parentTaskId ?? null,
+    retryCount: params.retryCount ?? 0,
+    branch: params.branch ?? null,
   }
 }

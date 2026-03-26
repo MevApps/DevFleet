@@ -57,3 +57,20 @@ describe("Task entity", () => {
     expect(isOverBudget(task)).toBe(true)
   })
 })
+
+describe("Task – new Phase 2 fields", () => {
+  it("creates task with default retryCount=0 and branch=null", () => {
+    const task = createTask({ id: createTaskId(), goalId: createGoalId(), description: "test", phase: "code", budget: createBudget({ maxTokens: 10000, maxCostUsd: 1.0 }) })
+    expect(task.retryCount).toBe(0)
+    expect(task.branch).toBeNull()
+  })
+  it("creates task with explicit retryCount and branch", () => {
+    const task = createTask({ id: createTaskId(), goalId: createGoalId(), description: "test", phase: "code", budget: createBudget({ maxTokens: 10000, maxCostUsd: 1.0 }), retryCount: 2, branch: "devfleet/task-123" })
+    expect(task.retryCount).toBe(2)
+    expect(task.branch).toBe("devfleet/task-123")
+  })
+  it("ALLOWED_TRANSITIONS: review -> merged is allowed", () => {
+    const task = createTask({ ...baseParams, status: "review" })
+    expect(canTransition(task, "merged")).toBe(true)
+  })
+})
