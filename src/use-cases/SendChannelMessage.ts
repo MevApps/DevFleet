@@ -15,7 +15,9 @@ export class SendChannelMessage {
       return failure(`Agent ${channelMsg.from} not found`)
     }
 
-    // Validate sender exists — Phase 3 dashboard will subscribe and route channel messages
+    // Phase 3: route channel messages to dashboard subscribers via bus
+    void this.bus
+
     return success(undefined)
   }
 }
