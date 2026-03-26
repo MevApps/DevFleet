@@ -115,7 +115,7 @@ describe("End-to-end integration: Developer agent writes a file", () => {
   let taskRepo: InMemoryTaskRepo
   let metricRecorder: InMemoryMetricRecorder
   let bus: InMemoryBus
-  let taskCompletedMessages: Message[]
+  let codeCompletedMessages: Message[]
 
   beforeEach(() => {
     aiCallCount = 0
@@ -125,9 +125,9 @@ describe("End-to-end integration: Developer agent writes a file", () => {
     metricRecorder = new InMemoryMetricRecorder()
     bus = new InMemoryBus()
 
-    taskCompletedMessages = []
-    bus.subscribe({ types: ["task.completed"] }, async msg => {
-      taskCompletedMessages.push(msg)
+    codeCompletedMessages = []
+    bus.subscribe({ types: ["code.completed"] }, async msg => {
+      codeCompletedMessages.push(msg)
     })
   })
 
@@ -188,9 +188,9 @@ describe("End-to-end integration: Developer agent writes a file", () => {
     expect(fileStore.has("output.txt")).toBe(true)
     expect(fileStore.get("output.txt")).toBe("Hello from DevFleet")
 
-    // 2. task.completed was emitted
-    expect(taskCompletedMessages).toHaveLength(1)
-    expect(taskCompletedMessages[0]?.type).toBe("task.completed")
+    // 2. code.completed was emitted (DeveloperPlugin emits code.completed in Phase 2)
+    expect(codeCompletedMessages).toHaveLength(1)
+    expect(codeCompletedMessages[0]?.type).toBe("code.completed")
 
     // 3. AI was called exactly twice
     expect(aiCallCount).toBe(2)

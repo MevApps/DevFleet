@@ -23,8 +23,7 @@ export class NodeWorktreeManager implements WorktreeManager {
     await this.shell.execute(`git branch -D "${branch}"`)
   }
 
-  async merge(branch: string, targetBranch?: string): Promise<MergeResult> {
-    const _target = targetBranch ?? "HEAD"
+  async merge(branch: string, _targetBranch?: string): Promise<MergeResult> {
     try {
       await this.shell.execute(`git merge "${branch}" --no-edit`)
       const commitResult = await this.shell.execute("git rev-parse HEAD")
