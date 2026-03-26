@@ -6,11 +6,11 @@ export function createAgentRole(value: string): AgentRole {
 }
 
 export const ROLES = {
-  SUPERVISOR: createAgentRole("SUPERVISOR"),
-  PRODUCT: createAgentRole("PRODUCT"),
-  ARCHITECT: createAgentRole("ARCHITECT"),
-  DEVELOPER: createAgentRole("DEVELOPER"),
-  REVIEWER: createAgentRole("REVIEWER"),
-  OPS: createAgentRole("OPS"),
-  LEARNER: createAgentRole("LEARNER"),
+  SUPERVISOR: "supervisor" as AgentRole,
+  PRODUCT: "product" as AgentRole,
+  ARCHITECT: "architect" as AgentRole,
+  DEVELOPER: "developer" as AgentRole,
+  REVIEWER: "reviewer" as AgentRole,
+  OPS: "ops" as AgentRole,
+  LEARNER: "learner" as AgentRole,
 } as const

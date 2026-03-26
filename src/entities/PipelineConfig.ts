@@ -8,20 +8,28 @@ export interface PhaseTransition {
 export interface PipelineConfig {
   readonly phases: readonly string[]
   readonly transitions: readonly PhaseTransition[]
-  readonly skipAllowed: boolean
+  readonly skipAllowed: ReadonlyArray<{
+    from: string
+    to: string
+    condition: string
+  }>
 }
 
 export interface CreatePipelineConfigParams {
   phases: readonly string[]
   transitions: readonly PhaseTransition[]
-  skipAllowed: boolean
+  skipAllowed?: ReadonlyArray<{
+    from: string
+    to: string
+    condition: string
+  }>
 }
 
 export function createPipelineConfig(params: CreatePipelineConfigParams): PipelineConfig {
   return {
     phases: params.phases,
     transitions: params.transitions,
-    skipAllowed: params.skipAllowed,
+    skipAllowed: params.skipAllowed ?? [],
   }
 }
 

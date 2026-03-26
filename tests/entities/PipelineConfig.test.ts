@@ -17,7 +17,7 @@ const pipeline = createPipelineConfig({
     // allow going back for rework
     { from: "review", to: "code" },
   ],
-  skipAllowed: false,
+  skipAllowed: [],
 })
 
 const baseTask = createTask({

@@ -1,7 +1,7 @@
 import { type AgentId, type TaskId } from "./ids"
 import { type AgentRole } from "./AgentRole"
 
-export type AgentStatus = "idle" | "busy" | "offline"
+export type AgentStatus = "idle" | "busy" | "blocked" | "paused" | "stopped"
 
 export interface Agent {
   readonly id: AgentId

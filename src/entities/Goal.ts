@@ -1,7 +1,7 @@
 import { type GoalId, type TaskId } from "./ids"
 import { type TokenBudget } from "./Budget"
 
-export type GoalStatus = "active" | "completed" | "abandoned"
+export type GoalStatus = "proposed" | "active" | "completed" | "abandoned"
 
 export interface Goal {
   readonly id: GoalId
@@ -28,7 +28,7 @@ export function createGoal(params: CreateGoalParams): Goal {
     id: params.id,
     description: params.description,
     totalBudget: params.totalBudget,
-    status: params.status ?? "active",
+    status: params.status ?? "proposed",
     createdAt: params.createdAt ?? new Date(),
     completedAt: params.completedAt ?? null,
     taskIds: params.taskIds ?? [],

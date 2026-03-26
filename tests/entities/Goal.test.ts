@@ -9,7 +9,7 @@ describe("Goal entity", () => {
       description: "Build a new feature",
       totalBudget: createBudget({ maxTokens: 10000, maxCostUsd: 10.0 }),
     })
-    expect(goal.status).toBe("active")
+    expect(goal.status).toBe("proposed")
     expect(goal.completedAt).toBeNull()
     expect(goal.taskIds).toEqual([])
     expect(goal.createdAt).toBeInstanceOf(Date)
