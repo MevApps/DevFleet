@@ -133,6 +133,15 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
     const task = await this.deps.taskRepo.findById(taskId)
     if (!task) return
 
+    // Release the agent back to idle so it can be re-assigned
+    if (task.assignedTo) {
+      try {
+        await this.deps.agentRegistry.updateStatus(task.assignedTo, "idle", null)
+      } catch {
+        // Agent may not exist in registry (e.g., in test scenarios)
+      }
+    }
+
     // Find next queued task in pipeline order (tasks were all created during decomposition)
     const allTasks = await this.deps.taskRepo.findByGoalId(task.goalId)
     const phases = this.deps.pipelineConfig.phases
@@ -175,7 +184,19 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
     if (!result.ok) return
 
     if (result.value === "keep") {
-      await this.deps.mergeBranch.execute(taskId)
+      // Find the code task that has a branch for merging
+      const task = await this.deps.taskRepo.findById(taskId)
+      if (!task) return
+
+      const allTasks = await this.deps.taskRepo.findByGoalId(task.goalId)
+      const codeTask = allTasks.find(t => t.phase === "code" && t.branch)
+
+      if (codeTask) {
+        await this.deps.mergeBranch.execute(codeTask.id)
+      }
+
+      // After merge, advance the pipeline from the reviewed task
+      await this.handleTaskCompleted(taskId)
     }
   }
 

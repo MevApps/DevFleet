@@ -45,7 +45,26 @@ describe("SupervisorPlugin", () => {
 
   it("handles review.approved by calling EvaluateKeepDiscard then MergeBranch", async () => {
     let mergeCalled = false
+    const taskRepo = new InMemoryTaskRepo()
+    const goalId = createGoalId("g-1")
+
+    // Create a code task with a branch (to be found for merging)
+    const { createTask } = await import("../../src/entities/Task")
+    const { createBudget } = await import("../../src/entities/Budget")
+    await taskRepo.create(createTask({
+      id: createTaskId("t-code"), goalId, description: "code task",
+      phase: "code", budget: createBudget({ maxTokens: 1000, maxCostUsd: 0.1 }),
+      branch: "devfleet/task-t-code",
+    }))
+
+    // Create the review task (the one being reviewed)
+    await taskRepo.create(createTask({
+      id: createTaskId("t-1"), goalId, description: "review task",
+      phase: "review", budget: createBudget({ maxTokens: 1000, maxCostUsd: 0.1 }),
+    }))
+
     const plugin = createTestPlugin({
+      taskRepo,
       evaluateKeepDiscard: { execute: async () => success("keep" as const) } as any,
       mergeBranch: { execute: async () => { mergeCalled = true; return success("abc123") } } as any,
     })
