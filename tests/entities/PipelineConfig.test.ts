@@ -1,8 +1,10 @@
 import {
   createPipelineConfig,
   canAdvancePhase,
+  roleForPhase,
   type PhaseTransition,
 } from "../../src/entities/PipelineConfig"
+import { ROLES } from "../../src/entities/AgentRole"
 import { createTask } from "../../src/entities/Task"
 import { createTaskId, createGoalId } from "../../src/entities/ids"
 import { createBudget } from "../../src/entities/Budget"
@@ -57,5 +59,33 @@ describe("PipelineConfig", () => {
   test("canAdvancePhase: done -> anything is false (terminal)", () => {
     const task = { ...baseTask, phase: "done" }
     expect(canAdvancePhase(task, "code", pipeline)).toBe(false)
+  })
+})
+
+describe("PipelineConfig – roleMapping", () => {
+  it("includes roleMapping in created config", () => {
+    const config = createPipelineConfig({
+      phases: ["spec", "plan", "code", "review"],
+      transitions: [{ from: "spec", to: "plan" }, { from: "plan", to: "code" }, { from: "code", to: "review" }],
+      roleMapping: [
+        { phase: "spec", role: ROLES.PRODUCT }, { phase: "plan", role: ROLES.ARCHITECT },
+        { phase: "code", role: ROLES.DEVELOPER }, { phase: "review", role: ROLES.REVIEWER },
+      ],
+    })
+    expect(config.roleMapping).toHaveLength(4)
+    expect(config.roleMapping[0]).toEqual({ phase: "spec", role: ROLES.PRODUCT })
+  })
+  it("defaults roleMapping to empty array", () => {
+    const config = createPipelineConfig({ phases: ["code"], transitions: [] })
+    expect(config.roleMapping).toEqual([])
+  })
+  it("roleForPhase returns correct role", () => {
+    const config = createPipelineConfig({
+      phases: ["spec", "code"], transitions: [{ from: "spec", to: "code" }],
+      roleMapping: [{ phase: "spec", role: ROLES.PRODUCT }, { phase: "code", role: ROLES.DEVELOPER }],
+    })
+    expect(roleForPhase("spec", config)).toBe(ROLES.PRODUCT)
+    expect(roleForPhase("code", config)).toBe(ROLES.DEVELOPER)
+    expect(roleForPhase("unknown", config)).toBeNull()
   })
 })

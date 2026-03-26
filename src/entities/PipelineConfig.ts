@@ -1,8 +1,14 @@
 import { type Task } from "./Task"
+import { type AgentRole } from "./AgentRole"
 
 export interface PhaseTransition {
   readonly from: string
   readonly to: string
+}
+
+export interface PhaseRoleMapping {
+  readonly phase: string
+  readonly role: AgentRole
 }
 
 export interface PipelineConfig {
@@ -13,6 +19,7 @@ export interface PipelineConfig {
     to: string
     condition: string
   }>
+  readonly roleMapping: readonly PhaseRoleMapping[]
 }
 
 export interface CreatePipelineConfigParams {
@@ -23,6 +30,7 @@ export interface CreatePipelineConfigParams {
     to: string
     condition: string
   }>
+  roleMapping?: readonly PhaseRoleMapping[]
 }
 
 export function createPipelineConfig(params: CreatePipelineConfigParams): PipelineConfig {
@@ -30,7 +38,13 @@ export function createPipelineConfig(params: CreatePipelineConfigParams): Pipeli
     phases: params.phases,
     transitions: params.transitions,
     skipAllowed: params.skipAllowed ?? [],
+    roleMapping: params.roleMapping ?? [],
   }
+}
+
+export function roleForPhase(phase: string, config: PipelineConfig): AgentRole | null {
+  const mapping = config.roleMapping.find((m) => m.phase === phase)
+  return mapping?.role ?? null
 }
 
 /**
