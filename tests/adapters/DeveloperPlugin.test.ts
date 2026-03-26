@@ -1,5 +1,6 @@
 import { DeveloperPlugin, DEVELOPER_TOOLS } from "@adapters/plugins/agents/DeveloperPlugin"
 import { InMemoryTaskRepo } from "@adapters/storage/InMemoryTaskRepo"
+import { InMemoryBus } from "@adapters/messaging/InMemoryBus"
 import type { AgentExecutor, AgentEvent, AgentConfig } from "@use-cases/ports/AgentExecutor"
 import type { Task } from "@entities/Task"
 import { createTask } from "@entities/Task"
@@ -178,5 +179,90 @@ describe("DeveloperPlugin", () => {
     it("healthCheck returns healthy", async () => {
       expect(await plugin.healthCheck()).toBe("healthy")
     })
+  })
+
+  describe("bus emission", () => {
+    it("emits code.completed (not task.completed) when executor completes", async () => {
+      const bus = new InMemoryBus()
+      const emitted: Message[] = []
+      bus.subscribe({}, async (msg) => { emitted.push(msg) })
+
+      const task = makeTask()
+      await taskRepo.create(task)
+
+      async function* gen(): AsyncIterable<AgentEvent> {
+        yield { type: "task_completed", data: {} }
+      }
+      mockExecutor.run.mockReturnValue(gen())
+
+      const pluginWithBus = new DeveloperPlugin({
+        agentId,
+        projectId,
+        executor: mockExecutor,
+        taskRepo,
+        systemPrompt: "You are a developer",
+        model: "claude-3-5-sonnet-20241022",
+        bus,
+      })
+
+      await pluginWithBus.handle(makeAssignedMsg(task.id, agentId))
+
+      expect(emitted).toHaveLength(1)
+      expect(emitted[0]?.type).toBe("code.completed")
+    })
+  })
+})
+
+describe("DeveloperPlugin – worktree isolation", () => {
+  it("creates worktree on task.assigned and sets branch on task", async () => {
+    const agentId = createAgentId("dev-wt")
+    const projectId = createProjectId("proj-wt")
+    const taskRepo = new InMemoryTaskRepo()
+    const task = createTask({
+      id: createTaskId("t-wt"),
+      goalId: createGoalId("g-wt"),
+      description: "Worktree task",
+      phase: "dev",
+      budget: createBudget({ maxTokens: 5000, maxCostUsd: 5.0 }),
+      status: "in_progress",
+      version: 1,
+    })
+    await taskRepo.create(task)
+
+    let worktreeCreated = false
+    let createdBranch: string | null = null
+    const mockWorktree = {
+      create: async (branch: string) => { worktreeCreated = true; createdBranch = branch; return `/tmp/${branch}` },
+      delete: async () => {},
+      merge: async () => ({ success: true as const, commit: "abc" }),
+      exists: async () => false,
+    }
+
+    async function* emptyGen(): AsyncIterable<AgentEvent> {}
+    const mockExecutor: jest.Mocked<AgentExecutor> = { run: jest.fn().mockReturnValue(emptyGen()) }
+
+    const pluginWithWorktree = new DeveloperPlugin({
+      agentId,
+      projectId,
+      executor: mockExecutor,
+      taskRepo,
+      systemPrompt: "You are a developer",
+      model: "claude-3-5-sonnet-20241022",
+      worktreeManager: mockWorktree,
+    })
+
+    await pluginWithWorktree.handle({
+      id: createMessageId(),
+      type: "task.assigned",
+      taskId: task.id,
+      agentId,
+      timestamp: new Date(),
+    })
+
+    expect(worktreeCreated).toBe(true)
+    expect(createdBranch).toContain("t-wt")
+
+    const updatedTask = await taskRepo.findById(task.id)
+    expect(updatedTask?.branch).toBe(createdBranch)
   })
 })
