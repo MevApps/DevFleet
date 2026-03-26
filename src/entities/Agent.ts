@@ -9,6 +9,7 @@ export interface Agent {
   readonly status: AgentStatus
   readonly currentTaskId: TaskId | null
   readonly model: string
+  readonly lastActiveAt: Date
 }
 
 export interface CreateAgentParams {
@@ -17,6 +18,7 @@ export interface CreateAgentParams {
   model: string
   status?: AgentStatus
   currentTaskId?: TaskId | null
+  lastActiveAt?: Date
 }
 
 export function createAgent(params: CreateAgentParams): Agent {
@@ -26,6 +28,7 @@ export function createAgent(params: CreateAgentParams): Agent {
     model: params.model,
     status: params.status ?? "idle",
     currentTaskId: params.currentTaskId ?? null,
+    lastActiveAt: params.lastActiveAt ?? new Date(),
   }
 }
 
