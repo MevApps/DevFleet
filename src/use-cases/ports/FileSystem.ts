@@ -5,3 +5,5 @@ export interface FileSystem {
   glob(pattern: string): Promise<ReadonlyArray<string>>
   exists(path: string): Promise<boolean>
 }
+
+export type FileSystemFactory = (rootPath: string) => FileSystem
