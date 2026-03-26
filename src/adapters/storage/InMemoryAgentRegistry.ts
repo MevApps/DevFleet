@@ -38,4 +38,8 @@ export class InMemoryAgentRegistry implements AgentRegistry {
       currentTaskId: taskId !== undefined ? taskId : agent.currentTaskId,
     })
   }
+
+  async findAll(): Promise<ReadonlyArray<Agent>> {
+    return [...this.store.values()]
+  }
 }
