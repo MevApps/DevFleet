@@ -38,6 +38,8 @@ export class EvaluateTurnOutcome {
           type: "budget.exceeded",
           taskId,
           agentId: task.assignedTo,
+          tokensUsed: task.tokensUsed,
+          budgetMax: task.budget.maxTokens,
           timestamp: new Date(),
         })
       }

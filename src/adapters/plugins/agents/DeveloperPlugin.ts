@@ -143,6 +143,7 @@ export class DeveloperPlugin implements PluginIdentity, Lifecycle, PluginMessage
           id: createMessageId(),
           type: "task.completed",
           taskId: message.taskId,
+          agentId: this.deps.agentId,
           timestamp: new Date(),
         })
       }
