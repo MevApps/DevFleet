@@ -1,25 +1,103 @@
 import * as readline from "node:readline"
 import { buildSystem } from "../config/composition-root"
 import { createGoal } from "../../entities/Goal"
-import { createGoalId, createTaskId, createAgentId, createMessageId } from "../../entities/ids"
+import { createGoalId, createMessageId } from "../../entities/ids"
 import { createBudget } from "../../entities/Budget"
-import { createTask } from "../../entities/Task"
-import { ROLES } from "../../entities/AgentRole"
+import type { Message } from "../../entities/Message"
 
 const WORKSPACE_DIR = process.env["WORKSPACE_DIR"] ?? process.cwd()
 const API_KEY = process.env["ANTHROPIC_API_KEY"]
 
+function formatTimestamp(): string {
+  return new Date().toLocaleTimeString("en-US", { hour12: false })
+}
+
+function logProgress(icon: string, message: string): void {
+  console.log(`  [${formatTimestamp()}] ${icon} ${message}`)
+}
+
 async function main(): Promise<void> {
-  console.log("DevFleet CLI — Phase 1 MVP")
-  console.log("==========================")
+  console.log("DevFleet CLI — Phase 2 Full Agent Team")
+  console.log("=======================================")
+
+  if (!API_KEY) {
+    console.log("(No ANTHROPIC_API_KEY set — using mock AI providers)")
+  }
 
   const system = await buildSystem({
     workspaceDir: WORKSPACE_DIR,
     anthropicApiKey: API_KEY,
     developerModel: process.env["DEVELOPER_MODEL"] ?? "claude-3-5-sonnet-20241022",
+    supervisorModel: process.env["SUPERVISOR_MODEL"] ?? "claude-3-5-sonnet-20241022",
+    reviewerModel: process.env["REVIEWER_MODEL"] ?? "claude-3-5-sonnet-20241022",
+    pipelineTimeoutMs: parseInt(process.env["PIPELINE_TIMEOUT_MS"] ?? "300000", 10),
+    maxRetries: parseInt(process.env["MAX_RETRIES"] ?? "2", 10),
   })
 
   await system.start()
+
+  // ---------------------------------------------------------------------------
+  // Subscribe to key messages and print progress
+  // ---------------------------------------------------------------------------
+  const progressTypes = [
+    "goal.created", "goal.completed", "goal.abandoned",
+    "task.created", "task.assigned", "task.completed", "task.failed",
+    "code.completed",
+    "review.approved", "review.rejected",
+    "branch.merged", "branch.discarded",
+    "build.passed", "build.failed",
+    "agent.stuck",
+  ] as const
+
+  system.bus.subscribe({ types: [...progressTypes] }, async (msg: Message) => {
+    switch (msg.type) {
+      case "goal.created":
+        logProgress("*", `Goal created: ${msg.goalId}`)
+        break
+      case "task.created":
+        logProgress("+", `Task created: ${msg.taskId} — ${msg.description}`)
+        break
+      case "task.assigned":
+        logProgress(">", `Task assigned: ${msg.taskId} -> ${msg.agentId}`)
+        break
+      case "task.completed":
+        logProgress("v", `Task completed: ${msg.taskId}`)
+        break
+      case "task.failed":
+        logProgress("!", `Task FAILED: ${msg.taskId} — ${msg.reason}`)
+        break
+      case "code.completed":
+        logProgress("v", `Code completed: ${msg.taskId} (branch: ${msg.branch})`)
+        break
+      case "build.passed":
+        logProgress("v", `Build passed: ${msg.taskId} (${msg.durationMs}ms)`)
+        break
+      case "build.failed":
+        logProgress("!", `Build FAILED: ${msg.taskId}`)
+        break
+      case "review.approved":
+        logProgress("v", `Review APPROVED: ${msg.taskId}`)
+        break
+      case "review.rejected":
+        logProgress("x", `Review REJECTED: ${msg.taskId} — ${msg.reasons.join("; ")}`)
+        break
+      case "branch.merged":
+        logProgress("v", `Branch merged: ${msg.branch} (${msg.commit})`)
+        break
+      case "branch.discarded":
+        logProgress("x", `Branch discarded: ${msg.branch} — ${msg.reason}`)
+        break
+      case "goal.completed":
+        logProgress("*", `Goal COMPLETED: ${msg.goalId} (cost: $${msg.costUsd.toFixed(2)})`)
+        break
+      case "goal.abandoned":
+        logProgress("!", `Goal ABANDONED: ${msg.goalId} — ${msg.reason}`)
+        break
+      case "agent.stuck":
+        logProgress("!", `Agent STUCK: ${msg.agentId} on ${msg.taskId}`)
+        break
+    }
+  })
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -42,49 +120,60 @@ async function main(): Promise<void> {
       id: goalId,
       description: goalDescription.trim(),
       totalBudget: createBudget({ maxTokens: 100_000, maxCostUsd: 10.0 }),
+      status: "active",
     })
     await system.goalRepo.create(goal)
 
-    console.log(`\nGoal created: ${goalId}`)
-    console.log("Decomposing goal into tasks...")
+    console.log(`\nPipeline started for goal: ${goalId}`)
+    console.log(`Timeout: ${system.pipelineTimeoutMs / 1000}s\n`)
 
-    // Simple decomposition: create one task from the goal
-    const taskId = createTaskId()
-    const agentId = createAgentId("developer-1")
-    const task = createTask({
-      id: taskId,
-      goalId,
-      description: goalDescription.trim(),
-      phase: "implementation",
-      budget: createBudget({ maxTokens: 50_000, maxCostUsd: 5.0 }),
-      status: "in_progress",
-      assignedTo: agentId,
-      version: 1,
+    // Set up completion/abandonment waiters
+    const done = new Promise<{ completed: boolean }>((resolve) => {
+      system.bus.subscribe({ types: ["goal.completed"] }, async (msg) => {
+        if (msg.type === "goal.completed" && msg.goalId === goalId) {
+          resolve({ completed: true })
+        }
+      })
+      system.bus.subscribe({ types: ["goal.abandoned"] }, async (msg) => {
+        if (msg.type === "goal.abandoned" && msg.goalId === goalId) {
+          resolve({ completed: false })
+        }
+      })
     })
-    await system.taskRepo.create(task)
 
-    console.log(`Task created: ${taskId}`)
-    console.log(`Assigning to developer agent: ${agentId}`)
+    // Set pipeline timeout
+    const timeout = new Promise<{ completed: boolean }>((resolve) => {
+      setTimeout(async () => {
+        logProgress("!", `Pipeline timeout (${system.pipelineTimeoutMs / 1000}s elapsed)`)
+        await system.bus.emit({
+          id: createMessageId(),
+          type: "goal.abandoned",
+          goalId,
+          reason: `Pipeline timeout after ${system.pipelineTimeoutMs}ms`,
+          timestamp: new Date(),
+        })
+        resolve({ completed: false })
+      }, system.pipelineTimeoutMs)
+    })
 
-    // Emit task.assigned to trigger the DeveloperPlugin
+    // Emit goal.created to kick off the pipeline
     await system.bus.emit({
       id: createMessageId(),
-      type: "task.assigned",
-      taskId,
-      agentId,
+      type: "goal.created",
+      goalId,
+      description: goal.description,
       timestamp: new Date(),
     })
 
-    // Wait for async processing
-    await new Promise<void>(resolve => setTimeout(resolve, 500))
+    // Wait for completion or timeout
+    const result = await Promise.race([done, timeout])
 
-    // Check agent registry for available agents
-    const available = await system.agentRegistry.findAvailable(ROLES.DEVELOPER)
-    if (available) {
-      console.log(`\nDeveloper agent ${available.id} is ${available.status}`)
+    if (result.completed) {
+      console.log("\nPipeline completed successfully.")
+    } else {
+      console.error("\nPipeline did not complete.")
+      process.exitCode = 1
     }
-
-    console.log("\nTask dispatched. Monitor logs above for execution progress.")
   } finally {
     rl.close()
     await system.stop()
