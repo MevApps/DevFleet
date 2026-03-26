@@ -101,6 +101,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     taskRepo,
     systemPrompt,
     model,
+    bus,
   })
 
   // Plugin registry

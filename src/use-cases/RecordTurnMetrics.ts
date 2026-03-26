@@ -60,6 +60,7 @@ export class RecordTurnMetrics {
     const updatedTask = {
       ...task,
       tokensUsed: task.tokensUsed + input.tokensIn + input.tokensOut,
+      version: task.version + 1,
     }
     await this.tasks.update(updatedTask)
 

@@ -1,9 +1,11 @@
 import type { AgentId, ProjectId } from "../../../entities/ids"
+import { createMessageId } from "../../../entities/ids"
 import type { Message, MessageFilter } from "../../../entities/Message"
 import type { PluginIdentity, Lifecycle, PluginMessageHandler, HealthStatus } from "../../../use-cases/ports/PluginInterfaces"
 import type { AgentExecutor } from "../../../use-cases/ports/AgentExecutor"
 import type { TaskRepository } from "../../../use-cases/ports/TaskRepository"
 import type { ToolDefinition } from "../../../use-cases/ports/AIProvider"
+import type { MessagePort } from "../../../use-cases/ports/MessagePort"
 import { ROLES } from "../../../entities/AgentRole"
 
 export interface DeveloperPluginDeps {
@@ -13,6 +15,7 @@ export interface DeveloperPluginDeps {
   readonly taskRepo: TaskRepository
   readonly systemPrompt: string
   readonly model: string
+  readonly bus?: MessagePort
 }
 
 export const DEVELOPER_TOOLS: ToolDefinition[] = [
@@ -133,9 +136,16 @@ export class DeveloperPlugin implements PluginIdentity, Lifecycle, PluginMessage
       this.deps.projectId,
     )
 
-    // Consume the iterator to drive execution
-    for await (const _event of iterator) {
-      // Events are consumed; callers can observe via bus
+    // Consume the iterator to drive execution and forward lifecycle events to bus
+    for await (const event of iterator) {
+      if (event.type === "task_completed" && this.deps.bus) {
+        await this.deps.bus.emit({
+          id: createMessageId(),
+          type: "task.completed",
+          taskId: message.taskId,
+          timestamp: new Date(),
+        })
+      }
     }
   }
 }
