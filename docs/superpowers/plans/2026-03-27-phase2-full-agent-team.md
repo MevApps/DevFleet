@@ -501,6 +501,19 @@ export interface Task {
 }
 ```
 
+Also update `ALLOWED_TRANSITIONS` to allow direct `review → merged` (MergeBranch transitions directly after review approval):
+
+```typescript
+export const ALLOWED_TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
+  queued: ["in_progress", "discarded"],
+  in_progress: ["review", "discarded"],
+  review: ["approved", "in_progress", "merged", "discarded"],
+  approved: ["merged", "discarded"],
+  merged: [],
+  discarded: [],
+}
+```
+
 Add to `CreateTaskParams`:
 
 ```typescript
@@ -1385,7 +1398,7 @@ describe("MergeBranch", () => {
     expect(result.ok).toBe(true)
 
     const updated = await taskRepo.findById("t-1" as any)
-    expect(updated?.status).toBe("approved")
+    expect(updated?.status).toBe("merged")
 
     expect(emitted).toHaveLength(1)
     expect(emitted[0].type).toBe("branch.merged")
@@ -1433,7 +1446,7 @@ export class MergeBranch {
       return failure(`Merge failed: ${mergeResult.error}`)
     }
 
-    const updated = { ...task, status: "approved" as const, version: task.version + 1 }
+    const updated = { ...task, status: "merged" as const, version: task.version + 1 }
     await this.tasks.update(updated)
 
     await this.bus.emit({
@@ -2499,6 +2512,7 @@ describe("SupervisorPlugin", () => {
     const types = subs.flatMap(s => s.types ?? [])
     expect(types).toContain("goal.created")
     expect(types).toContain("task.completed")
+    expect(types).toContain("code.completed")
     expect(types).toContain("task.failed")
     expect(types).toContain("review.approved")
     expect(types).toContain("review.rejected")
@@ -2637,6 +2651,7 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
     return [{
       types: [
         "goal.created", "task.completed", "task.failed",
+        "code.completed",
         "review.approved", "review.rejected",
         "budget.exceeded", "agent.stuck",
       ],
@@ -2648,6 +2663,8 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
       case "goal.created":
         return this.handleGoalCreated(message.goalId, message.description)
       case "task.completed":
+        return this.handleTaskCompleted(message.taskId)
+      case "code.completed":
         return this.handleTaskCompleted(message.taskId)
       case "task.failed":
         return this.handleTaskFailed(message.taskId, message.reason)
@@ -2710,49 +2727,41 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
     const task = await this.deps.taskRepo.findById(taskId)
     if (!task) return
 
-    // Find next phase
+    // Find next queued task in pipeline order (tasks were all created during decomposition)
+    const allTasks = await this.deps.taskRepo.findByGoalId(task.goalId)
     const phases = this.deps.pipelineConfig.phases
     const currentIdx = phases.indexOf(task.phase)
-    if (currentIdx < 0 || currentIdx >= phases.length - 1) {
-      // Last phase — emit goal.completed
-      const goal = await this.deps.goalRepo.findById(task.goalId)
-      if (goal) {
-        await this.deps.bus.emit({
-          id: createMessageId(),
-          type: "goal.completed",
-          goalId: task.goalId,
-          costUsd: 0, // TODO: calculate from metrics in Phase 4
-          timestamp: new Date(),
-        })
-      }
-      return
+
+    const nextTask = allTasks.find(t =>
+      t.status === "queued" && phases.indexOf(t.phase) > currentIdx
+    )
+
+    if (nextTask) {
+      const role = roleForPhase(nextTask.phase, this.deps.pipelineConfig)
+      if (role) await this.deps.assignTask.execute(nextTask.id, role)
+    } else {
+      // All tasks done — emit goal.completed
+      await this.deps.bus.emit({
+        id: createMessageId(),
+        type: "goal.completed",
+        goalId: task.goalId,
+        costUsd: 0, // Phase 4: calculate from metrics
+        timestamp: new Date(),
+      })
     }
-
-    const nextPhase = phases[currentIdx + 1]!
-    if (!canAdvancePhase(task, nextPhase, this.deps.pipelineConfig)) return
-
-    // Create next task and assign
-    const nextTaskId = createTaskId()
-    const nextRole = roleForPhase(nextPhase, this.deps.pipelineConfig)
-    if (!nextRole) return
-
-    // Create a task for the next phase
-    const goal = await this.deps.goalRepo.findById(task.goalId)
-    if (!goal) return
-
-    await this.deps.decomposeGoal.execute(task.goalId, [{
-      id: nextTaskId,
-      description: `${nextPhase}: ${task.description}`,
-      phase: nextPhase,
-      budget: createBudget(10000, 1.0),
-    }])
-
-    await this.deps.assignTask.execute(nextTaskId, nextRole)
   }
 
-  private async handleTaskFailed(taskId: TaskId, _reason: string): Promise<void> {
-    // For now, discard the task
-    await this.deps.discardBranch.execute(taskId, "task failed")
+  private async handleTaskFailed(taskId: TaskId, reason: string): Promise<void> {
+    const task = await this.deps.taskRepo.findById(taskId)
+    if (!task) return
+
+    if (task.branch) {
+      await this.deps.discardBranch.execute(taskId, reason)
+    } else {
+      // Non-code task failed — mark as discarded directly (no branch to clean up)
+      const updated = { ...task, status: "discarded" as const, version: task.version + 1 }
+      await this.deps.taskRepo.update(updated)
+    }
   }
 
   private async handleReviewApproved(taskId: TaskId): Promise<void> {
@@ -3445,48 +3454,653 @@ git commit -m "feat: enhance DeveloperPlugin with worktree isolation and code.co
 - Test: `tests/adapters/OpsPlugin.test.ts`
 - Test: `tests/adapters/LearnerPlugin.test.ts`
 
-These follow the same pattern as ProductPlugin/ArchitectPlugin. Reviewer uses full AI, Ops uses DeterministicProvider, Learner logs events. See the design spec for details. Each plugin:
+- [ ] **Step 1: Write ReviewerPlugin test**
 
-1. Implements `PluginIdentity`, `Lifecycle`, `PluginMessageHandler`
-2. Subscribes to `task.assigned` filtered by its own `agentId`
-3. Uses constructor injection for all dependencies
+Create `tests/adapters/ReviewerPlugin.test.ts`:
 
-- [ ] **Step 1: Write and implement ReviewerPlugin**
+```typescript
+import { ReviewerPlugin } from "../../src/adapters/plugins/agents/ReviewerPlugin"
+import { InMemoryBus } from "../../src/adapters/messaging/InMemoryBus"
+import { InMemoryTaskRepo } from "../../src/adapters/storage/InMemoryTaskRepo"
+import { InMemoryArtifactRepo } from "../../src/adapters/storage/InMemoryArtifactRepo"
+import { createTask } from "../../src/entities/Task"
+import { createArtifact } from "../../src/entities/Artifact"
+import { createAgentId, createTaskId, createGoalId, createMessageId, createArtifactId } from "../../src/entities/ids"
+import { createBudget } from "../../src/entities/Budget"
+import { success } from "../../src/use-cases/Result"
+import type { Message } from "../../src/entities/Message"
 
-Create `src/adapters/plugins/agents/ReviewerPlugin.ts` following the same pattern as ProductPlugin, but:
-- Uses full AI with tools (`file_read`, `shell_run`, `file_glob`)
-- Creates review `Artifact` with `verdict` and `issueCount`
-- Emits `review.approved` or `review.rejected` based on AI verdict
-- Model: Opus
+describe("ReviewerPlugin", () => {
+  it("has correct identity and subscribes filtered by agentId", () => {
+    const plugin = createTestReviewerPlugin()
+    expect(plugin.name).toBe("reviewer-agent")
+    const subs = plugin.subscriptions()
+    expect(subs[0].types).toContain("task.assigned")
+    expect(subs[0].agentId).toBe("reviewer-1")
+  })
 
-- [ ] **Step 2: Write and implement OpsPlugin**
+  it("ignores messages for other agents", async () => {
+    let executorCalled = false
+    const plugin = createTestReviewerPlugin({
+      executor: { async *run() { executorCalled = true; yield { type: "task_completed", data: {} } } } as any,
+    })
+    await plugin.handle({
+      id: createMessageId(), type: "task.assigned",
+      taskId: createTaskId("t-1"), agentId: createAgentId("other"), timestamp: new Date(),
+    })
+    expect(executorCalled).toBe(false)
+  })
+
+  it("emits review.approved when AI verdict is approved", async () => {
+    const bus = new InMemoryBus()
+    const emitted: Message[] = []
+    bus.subscribe({}, async (msg) => { emitted.push(msg) })
+
+    const taskRepo = new InMemoryTaskRepo()
+    const task = createTask({
+      id: createTaskId("t-1"), goalId: createGoalId(), description: "review code",
+      phase: "review", budget: createBudget(10000, 1.0),
+    })
+    await taskRepo.create(task)
+
+    const plugin = createTestReviewerPlugin({
+      taskRepo, bus,
+      executor: { async *run() {
+        yield { type: "task_completed", data: { content: "APPROVED\nAll tests pass." } }
+      }} as any,
+    })
+
+    await plugin.handle({
+      id: createMessageId(), type: "task.assigned",
+      taskId: createTaskId("t-1"), agentId: createAgentId("reviewer-1"), timestamp: new Date(),
+    })
+
+    const reviewMsg = emitted.find(m => m.type === "review.approved" || m.type === "review.rejected")
+    expect(reviewMsg?.type).toBe("review.approved")
+  })
+
+  it("emits review.rejected when AI verdict is rejected", async () => {
+    const bus = new InMemoryBus()
+    const emitted: Message[] = []
+    bus.subscribe({}, async (msg) => { emitted.push(msg) })
+
+    const taskRepo = new InMemoryTaskRepo()
+    const task = createTask({
+      id: createTaskId("t-1"), goalId: createGoalId(), description: "review code",
+      phase: "review", budget: createBudget(10000, 1.0),
+    })
+    await taskRepo.create(task)
+
+    const plugin = createTestReviewerPlugin({
+      taskRepo, bus,
+      executor: { async *run() {
+        yield { type: "task_completed", data: { content: "REJECTED\nNo tests found.\nNaming violations." } }
+      }} as any,
+    })
+
+    await plugin.handle({
+      id: createMessageId(), type: "task.assigned",
+      taskId: createTaskId("t-1"), agentId: createAgentId("reviewer-1"), timestamp: new Date(),
+    })
+
+    const reviewMsg = emitted.find(m => m.type === "review.rejected")
+    expect(reviewMsg?.type).toBe("review.rejected")
+  })
+})
+
+function createTestReviewerPlugin(overrides: Record<string, any> = {}): ReviewerPlugin {
+  return new ReviewerPlugin({
+    agentId: createAgentId("reviewer-1"),
+    projectId: "proj-1" as any,
+    executor: { async *run() { yield { type: "task_completed", data: { content: "APPROVED" } } } } as any,
+    taskRepo: overrides.taskRepo ?? new InMemoryTaskRepo(),
+    artifactRepo: overrides.artifactRepo ?? new InMemoryArtifactRepo(),
+    createArtifact: overrides.createArtifact ?? { execute: async () => success(undefined) } as any,
+    bus: overrides.bus ?? new InMemoryBus(),
+    systemPrompt: "Review this code.",
+    model: "claude-opus-4-6",
+    ...overrides,
+  })
+}
+```
+
+- [ ] **Step 2: Implement ReviewerPlugin**
+
+Create `src/adapters/plugins/agents/ReviewerPlugin.ts`:
+
+```typescript
+import type { AgentId, ProjectId } from "../../../entities/ids"
+import { createMessageId, createArtifactId } from "../../../entities/ids"
+import type { Message, MessageFilter } from "../../../entities/Message"
+import type { PluginIdentity, Lifecycle, PluginMessageHandler, HealthStatus } from "../../../use-cases/ports/PluginInterfaces"
+import type { AgentExecutor } from "../../../use-cases/ports/AgentExecutor"
+import type { TaskRepository } from "../../../use-cases/ports/TaskRepository"
+import type { ArtifactRepository } from "../../../use-cases/ports/ArtifactRepository"
+import type { MessagePort } from "../../../use-cases/ports/MessagePort"
+import type { CreateArtifactUseCase } from "../../../use-cases/CreateArtifact"
+import type { ToolDefinition } from "../../../use-cases/ports/AIProvider"
+import { createArtifact } from "../../../entities/Artifact"
+import { ROLES } from "../../../entities/AgentRole"
+
+export interface ReviewerPluginDeps {
+  readonly agentId: AgentId
+  readonly projectId: ProjectId
+  readonly executor: AgentExecutor
+  readonly taskRepo: TaskRepository
+  readonly artifactRepo: ArtifactRepository
+  readonly createArtifact: CreateArtifactUseCase
+  readonly bus: MessagePort
+  readonly systemPrompt: string
+  readonly model: string
+}
+
+const REVIEWER_TOOLS: ToolDefinition[] = [
+  { name: "file_read", description: "Read a file", inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } },
+  { name: "file_glob", description: "List files matching a pattern", inputSchema: { type: "object", properties: { pattern: { type: "string" } }, required: ["pattern"] } },
+  { name: "shell_run", description: "Run a shell command", inputSchema: { type: "object", properties: { command: { type: "string" } }, required: ["command"] } },
+]
+
+export class ReviewerPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
+  readonly id: string
+  readonly name = "reviewer-agent"
+  readonly version = "1.0.0"
+  readonly description = "Reviewer agent that evaluates code against specs and plans"
+
+  private readonly deps: ReviewerPluginDeps
+
+  constructor(deps: ReviewerPluginDeps) {
+    this.deps = deps
+    this.id = `reviewer-${deps.agentId}`
+  }
+
+  async start(): Promise<void> {}
+  async stop(): Promise<void> {}
+  async healthCheck(): Promise<HealthStatus> { return "healthy" }
+
+  subscriptions(): ReadonlyArray<MessageFilter> {
+    return [{ types: ["task.assigned"], agentId: this.deps.agentId }]
+  }
+
+  async handle(message: Message): Promise<void> {
+    if (message.type !== "task.assigned") return
+    if (message.agentId !== this.deps.agentId) return
+
+    const task = await this.deps.taskRepo.findById(message.taskId)
+    if (!task) return
+
+    // Read all task artifacts (spec, plan, diff) for context
+    const artifacts = await this.deps.artifactRepo.findByTaskId(task.id)
+    const artifactContext = artifacts.map(a => `[${a.kind}]:\n${a.content}`).join("\n\n---\n\n")
+
+    const config = {
+      role: ROLES.REVIEWER,
+      systemPrompt: this.deps.systemPrompt + (artifactContext ? `\n\nArtifacts for review:\n${artifactContext}` : ""),
+      tools: REVIEWER_TOOLS,
+      model: this.deps.model,
+      budget: task.budget,
+    }
+
+    let content = ""
+    for await (const event of this.deps.executor.run(this.deps.agentId, config, task, this.deps.projectId)) {
+      if (event.type === "task_completed" && typeof event.data["content"] === "string") {
+        content = event.data["content"] as string
+      }
+    }
+
+    // Parse verdict from AI response
+    const approved = content.toUpperCase().includes("APPROVED")
+    const reasons = approved ? [] : content.split("\n").filter(l => l.trim().length > 0 && !l.toUpperCase().includes("REJECTED"))
+
+    // Create review artifact
+    const artifact = createArtifact({
+      id: createArtifactId(),
+      kind: "review",
+      format: "markdown",
+      taskId: task.id,
+      createdBy: this.deps.agentId,
+      content,
+      metadata: { verdict: approved ? "approved" : "rejected", issueCount: reasons.length },
+    })
+    await this.deps.createArtifact.execute(artifact)
+
+    // Emit verdict message
+    if (approved) {
+      await this.deps.bus.emit({
+        id: createMessageId(), type: "review.approved",
+        taskId: message.taskId, reviewerId: this.deps.agentId, timestamp: new Date(),
+      })
+    } else {
+      await this.deps.bus.emit({
+        id: createMessageId(), type: "review.rejected",
+        taskId: message.taskId, reviewerId: this.deps.agentId,
+        reasons, timestamp: new Date(),
+      })
+    }
+  }
+}
+```
+
+- [ ] **Step 3: Run ReviewerPlugin tests**
+
+Run: `npx jest tests/adapters/ReviewerPlugin.test.ts --verbose`
+Expected: ALL pass
+
+- [ ] **Step 4: Commit ReviewerPlugin**
+
+```bash
+git add src/adapters/plugins/agents/ReviewerPlugin.ts tests/adapters/ReviewerPlugin.test.ts
+git commit -m "feat: add ReviewerPlugin — full AI with tools for code review"
+```
+
+- [ ] **Step 5: Write OpsPlugin test**
+
+Create `tests/adapters/OpsPlugin.test.ts`:
+
+```typescript
+import { OpsPlugin } from "../../src/adapters/plugins/agents/OpsPlugin"
+import { InMemoryBus } from "../../src/adapters/messaging/InMemoryBus"
+import { InMemoryTaskRepo } from "../../src/adapters/storage/InMemoryTaskRepo"
+import { InMemoryArtifactRepo } from "../../src/adapters/storage/InMemoryArtifactRepo"
+import { createTask } from "../../src/entities/Task"
+import { createAgentId, createTaskId, createGoalId, createMessageId } from "../../src/entities/ids"
+import { createBudget } from "../../src/entities/Budget"
+import { success } from "../../src/use-cases/Result"
+import type { Message } from "../../src/entities/Message"
+
+describe("OpsPlugin", () => {
+  it("has correct identity and subscribes filtered by agentId", () => {
+    const plugin = createTestOpsPlugin()
+    expect(plugin.name).toBe("ops-agent")
+    const subs = plugin.subscriptions()
+    expect(subs[0].agentId).toBe("ops-1")
+  })
+
+  it("emits build.passed and test.report.created on success", async () => {
+    const bus = new InMemoryBus()
+    const emitted: Message[] = []
+    bus.subscribe({}, async (msg) => { emitted.push(msg) })
+
+    const taskRepo = new InMemoryTaskRepo()
+    const task = createTask({
+      id: createTaskId("t-1"), goalId: createGoalId(), description: "run tests",
+      phase: "test", budget: createBudget(5000, 0.5),
+    })
+    await taskRepo.create(task)
+
+    const plugin = createTestOpsPlugin({ taskRepo, bus })
+
+    await plugin.handle({
+      id: createMessageId(), type: "task.assigned",
+      taskId: createTaskId("t-1"), agentId: createAgentId("ops-1"), timestamp: new Date(),
+    })
+
+    const buildMsg = emitted.find(m => m.type === "build.passed" || m.type === "build.failed")
+    expect(buildMsg?.type).toBe("build.passed")
+    const reportMsg = emitted.find(m => m.type === "test.report.created")
+    expect(reportMsg).toBeDefined()
+  })
+})
+
+function createTestOpsPlugin(overrides: Record<string, any> = {}): OpsPlugin {
+  return new OpsPlugin({
+    agentId: createAgentId("ops-1"),
+    projectId: "proj-1" as any,
+    executor: {
+      async *run() {
+        yield { type: "tool_executed", data: { toolName: "shell_run", success: true } }
+        yield { type: "task_completed", data: { content: "Build OK\n10 passed, 0 failed" } }
+      },
+    } as any,
+    taskRepo: overrides.taskRepo ?? new InMemoryTaskRepo(),
+    artifactRepo: overrides.artifactRepo ?? new InMemoryArtifactRepo(),
+    createArtifact: overrides.createArtifact ?? { execute: async () => success(undefined) } as any,
+    bus: overrides.bus ?? new InMemoryBus(),
+    ...overrides,
+  })
+}
+```
+
+- [ ] **Step 6: Implement OpsPlugin**
 
 Create `src/adapters/plugins/agents/OpsPlugin.ts`:
-- Uses `AgentExecutor` with `DeterministicProvider`
-- Creates `test_report` artifact
-- Emits `build.passed` or `build.failed`, then `test.report.created`
 
-- [ ] **Step 3: Write and implement LearnerPlugin**
+```typescript
+import type { AgentId, ProjectId } from "../../../entities/ids"
+import { createMessageId, createArtifactId } from "../../../entities/ids"
+import type { Message, MessageFilter } from "../../../entities/Message"
+import type { PluginIdentity, Lifecycle, PluginMessageHandler, HealthStatus } from "../../../use-cases/ports/PluginInterfaces"
+import type { AgentExecutor } from "../../../use-cases/ports/AgentExecutor"
+import type { TaskRepository } from "../../../use-cases/ports/TaskRepository"
+import type { ArtifactRepository } from "../../../use-cases/ports/ArtifactRepository"
+import type { MessagePort } from "../../../use-cases/ports/MessagePort"
+import type { CreateArtifactUseCase } from "../../../use-cases/CreateArtifact"
+import { createArtifact } from "../../../entities/Artifact"
+import { ROLES } from "../../../entities/AgentRole"
+
+export interface OpsPluginDeps {
+  readonly agentId: AgentId
+  readonly projectId: ProjectId
+  readonly executor: AgentExecutor
+  readonly taskRepo: TaskRepository
+  readonly artifactRepo: ArtifactRepository
+  readonly createArtifact: CreateArtifactUseCase
+  readonly bus: MessagePort
+}
+
+export class OpsPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
+  readonly id: string
+  readonly name = "ops-agent"
+  readonly version = "1.0.0"
+  readonly description = "Ops agent that runs builds and tests deterministically"
+
+  private readonly deps: OpsPluginDeps
+
+  constructor(deps: OpsPluginDeps) {
+    this.deps = deps
+    this.id = `ops-${deps.agentId}`
+  }
+
+  async start(): Promise<void> {}
+  async stop(): Promise<void> {}
+  async healthCheck(): Promise<HealthStatus> { return "healthy" }
+
+  subscriptions(): ReadonlyArray<MessageFilter> {
+    return [{ types: ["task.assigned"], agentId: this.deps.agentId }]
+  }
+
+  async handle(message: Message): Promise<void> {
+    if (message.type !== "task.assigned") return
+    if (message.agentId !== this.deps.agentId) return
+
+    const task = await this.deps.taskRepo.findById(message.taskId)
+    if (!task) return
+
+    // DeterministicProvider is configured in the executor — just run it
+    const config = {
+      role: ROLES.OPS,
+      systemPrompt: "",
+      tools: [{ name: "shell_run", description: "Run a shell command", inputSchema: { type: "object", properties: { command: { type: "string" } }, required: ["command"] } }],
+      model: "deterministic",
+      budget: task.budget,
+    }
+
+    let buildOutput = ""
+    const startTime = Date.now()
+    let buildFailed = false
+
+    for await (const event of this.deps.executor.run(this.deps.agentId, config, task, this.deps.projectId)) {
+      if (event.type === "tool_executed" && event.data["success"] === false) {
+        buildFailed = true
+      }
+      if (event.type === "task_completed" && typeof event.data["content"] === "string") {
+        buildOutput = event.data["content"] as string
+      }
+    }
+
+    const durationMs = Date.now() - startTime
+
+    // Parse test results from output
+    const passedMatch = buildOutput.match(/(\d+)\s+passed/)
+    const failedMatch = buildOutput.match(/(\d+)\s+failed/)
+    const passed = passedMatch ? parseInt(passedMatch[1]!) : 0
+    const failed = failedMatch ? parseInt(failedMatch[1]!) : 0
+
+    // Create test_report artifact
+    const artifact = createArtifact({
+      id: createArtifactId(),
+      kind: "test_report",
+      format: "json",
+      taskId: task.id,
+      createdBy: this.deps.agentId,
+      content: JSON.stringify({ passed, failed, output: buildOutput }),
+      metadata: { passed, failed, coverageDelta: 0 },
+    })
+    await this.deps.createArtifact.execute(artifact)
+
+    // Emit build result
+    if (buildFailed || failed > 0) {
+      await this.deps.bus.emit({
+        id: createMessageId(), type: "build.failed",
+        taskId: task.id, error: buildOutput, timestamp: new Date(),
+      })
+    } else {
+      await this.deps.bus.emit({
+        id: createMessageId(), type: "build.passed",
+        taskId: task.id, durationMs, timestamp: new Date(),
+      })
+    }
+
+    // Emit test report
+    await this.deps.bus.emit({
+      id: createMessageId(), type: "test.report.created",
+      taskId: task.id, artifactId: artifact.id, timestamp: new Date(),
+    })
+
+    // Emit task.completed for pipeline advancement
+    await this.deps.bus.emit({
+      id: createMessageId(), type: "task.completed",
+      taskId: task.id, agentId: this.deps.agentId, timestamp: new Date(),
+    })
+  }
+}
+```
+
+- [ ] **Step 7: Run OpsPlugin tests**
+
+Run: `npx jest tests/adapters/OpsPlugin.test.ts --verbose`
+Expected: ALL pass
+
+- [ ] **Step 8: Commit OpsPlugin**
+
+```bash
+git add src/adapters/plugins/agents/OpsPlugin.ts tests/adapters/OpsPlugin.test.ts
+git commit -m "feat: add OpsPlugin — deterministic build/test via executor"
+```
+
+- [ ] **Step 9: Write LearnerPlugin test**
+
+Create `tests/adapters/LearnerPlugin.test.ts`:
+
+```typescript
+import { LearnerPlugin } from "../../src/adapters/plugins/agents/LearnerPlugin"
+import { InMemoryBus } from "../../src/adapters/messaging/InMemoryBus"
+import { InMemoryEventStore } from "../../src/adapters/storage/InMemoryEventStore"
+import { InMemoryTaskRepo } from "../../src/adapters/storage/InMemoryTaskRepo"
+import { createTask } from "../../src/entities/Task"
+import { createAgentId, createTaskId, createGoalId, createMessageId } from "../../src/entities/ids"
+import { createBudget } from "../../src/entities/Budget"
+
+describe("LearnerPlugin", () => {
+  it("has correct identity and subscribes to review/goal/budget events", () => {
+    const plugin = createTestLearnerPlugin()
+    expect(plugin.name).toBe("learner-agent")
+    const subs = plugin.subscriptions()
+    const types = subs.flatMap(s => s.types ?? [])
+    expect(types).toContain("review.approved")
+    expect(types).toContain("review.rejected")
+    expect(types).toContain("goal.completed")
+    expect(types).toContain("budget.exceeded")
+  })
+
+  it("creates KeepDiscardRecord on review.approved", async () => {
+    const eventStore = new InMemoryEventStore()
+    const taskRepo = new InMemoryTaskRepo()
+    const task = createTask({
+      id: createTaskId("t-1"), goalId: createGoalId(), description: "test",
+      phase: "code", budget: createBudget(10000, 1.0), assignedTo: createAgentId("dev-1"),
+    })
+    await taskRepo.create(task)
+
+    const plugin = createTestLearnerPlugin({ eventStore, taskRepo })
+
+    await plugin.handle({
+      id: createMessageId(), type: "review.approved",
+      taskId: createTaskId("t-1"), reviewerId: createAgentId("rev-1"), timestamp: new Date(),
+    })
+
+    expect(plugin.keepDiscardRecords).toHaveLength(1)
+    expect(plugin.keepDiscardRecords[0]?.verdict).toBe("approved")
+  })
+
+  it("creates KeepDiscardRecord on review.rejected", async () => {
+    const taskRepo = new InMemoryTaskRepo()
+    const task = createTask({
+      id: createTaskId("t-1"), goalId: createGoalId(), description: "test",
+      phase: "code", budget: createBudget(10000, 1.0), assignedTo: createAgentId("dev-1"),
+    })
+    await taskRepo.create(task)
+
+    const plugin = createTestLearnerPlugin({ taskRepo })
+
+    await plugin.handle({
+      id: createMessageId(), type: "review.rejected",
+      taskId: createTaskId("t-1"), reviewerId: createAgentId("rev-1"),
+      reasons: ["no tests", "bad naming"], timestamp: new Date(),
+    })
+
+    expect(plugin.keepDiscardRecords).toHaveLength(1)
+    expect(plugin.keepDiscardRecords[0]?.verdict).toBe("rejected")
+    expect(plugin.keepDiscardRecords[0]?.reasons).toEqual(["no tests", "bad naming"])
+  })
+
+  it("records event on goal.completed", async () => {
+    const eventStore = new InMemoryEventStore()
+    const plugin = createTestLearnerPlugin({ eventStore })
+
+    await plugin.handle({
+      id: createMessageId(), type: "goal.completed",
+      goalId: createGoalId("g-1"), costUsd: 0.5, timestamp: new Date(),
+    })
+
+    const events = await eventStore.findByGoalId(createGoalId("g-1"))
+    expect(events.length).toBeGreaterThan(0)
+  })
+})
+
+function createTestLearnerPlugin(overrides: Record<string, any> = {}): LearnerPlugin {
+  return new LearnerPlugin({
+    agentId: createAgentId("learner-1"),
+    bus: overrides.bus ?? new InMemoryBus(),
+    eventStore: overrides.eventStore ?? new InMemoryEventStore(),
+    taskRepo: overrides.taskRepo ?? new InMemoryTaskRepo(),
+    ...overrides,
+  })
+}
+```
+
+- [ ] **Step 10: Implement LearnerPlugin**
 
 Create `src/adapters/plugins/agents/LearnerPlugin.ts`:
-- Subscribes to: `review.rejected`, `review.approved`, `goal.completed`, `budget.exceeded`, `insight.generated`, `ceo.override`
-- Creates `KeepDiscardRecord` on review events
-- Records `SystemEvent` to `EventStore` on other events
-- No AI, no executor
 
-- [ ] **Step 4: Write unit tests for all three**
+```typescript
+import type { AgentId } from "../../../entities/ids"
+import { createEventId } from "../../../entities/ids"
+import type { Message, MessageFilter } from "../../../entities/Message"
+import type { PluginIdentity, Lifecycle, PluginMessageHandler, HealthStatus } from "../../../use-cases/ports/PluginInterfaces"
+import type { MessagePort } from "../../../use-cases/ports/MessagePort"
+import type { EventStore } from "../../../use-cases/ports/EventStore"
+import type { TaskRepository } from "../../../use-cases/ports/TaskRepository"
+import { type KeepDiscardRecord, createKeepDiscardRecord } from "../../../entities/KeepDiscardRecord"
 
-Each test file verifies:
-- Plugin identity and subscriptions
-- Correct behavior on `handle()` (artifact creation, message emission, event recording)
-- Ignores messages for other agents
+export interface LearnerPluginDeps {
+  readonly agentId: AgentId
+  readonly bus: MessagePort
+  readonly eventStore: EventStore
+  readonly taskRepo: TaskRepository
+}
 
-- [ ] **Step 5: Run all tests**
+export class LearnerPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
+  readonly id: string
+  readonly name = "learner-agent"
+  readonly version = "1.0.0"
+  readonly description = "Learner agent that records structured events for future analysis"
+
+  private readonly deps: LearnerPluginDeps
+  readonly keepDiscardRecords: KeepDiscardRecord[] = []
+
+  constructor(deps: LearnerPluginDeps) {
+    this.deps = deps
+    this.id = `learner-${deps.agentId}`
+  }
+
+  async start(): Promise<void> {}
+  async stop(): Promise<void> {}
+  async healthCheck(): Promise<HealthStatus> { return "healthy" }
+
+  subscriptions(): ReadonlyArray<MessageFilter> {
+    return [{
+      types: [
+        "review.approved", "review.rejected",
+        "goal.completed", "budget.exceeded",
+        "insight.generated", "ceo.override",
+      ],
+    }]
+  }
+
+  async handle(message: Message): Promise<void> {
+    switch (message.type) {
+      case "review.approved":
+        return this.handleReviewVerdict(message.taskId, "approved", [])
+      case "review.rejected":
+        return this.handleReviewVerdict(message.taskId, "rejected", [...message.reasons])
+      default:
+        return this.recordSystemEvent(message)
+    }
+  }
+
+  private async handleReviewVerdict(
+    taskId: Message extends { taskId: infer T } ? T : never,
+    verdict: "approved" | "rejected",
+    reasons: string[],
+  ): Promise<void> {
+    const task = await this.deps.taskRepo.findById(taskId as any)
+    if (!task) return
+
+    const record = createKeepDiscardRecord({
+      taskId: task.id,
+      agentId: task.assignedTo ?? this.deps.agentId,
+      phase: task.phase,
+      durationMs: 0, // Phase 4: calculate from metrics
+      tokensUsed: task.tokensUsed,
+      verdict,
+      reasons,
+      artifactIds: [...task.artifacts],
+      commitHash: null,
+    })
+
+    this.keepDiscardRecords.push(record)
+  }
+
+  private async recordSystemEvent(message: Message): Promise<void> {
+    const goalId = "goalId" in message ? (message as any).goalId : null
+    const taskId = "taskId" in message ? (message as any).taskId : null
+    const agentId = "agentId" in message ? (message as any).agentId : null
+
+    await this.deps.eventStore.append({
+      id: createEventId(),
+      type: message.type,
+      agentId,
+      taskId,
+      goalId,
+      cost: null,
+      occurredAt: new Date(),
+      payload: message,
+    })
+  }
+}
+```
+
+- [ ] **Step 11: Run all three plugin tests**
+
+Run: `npx jest tests/adapters/ReviewerPlugin.test.ts tests/adapters/OpsPlugin.test.ts tests/adapters/LearnerPlugin.test.ts --verbose`
+Expected: ALL pass
+
+- [ ] **Step 12: Run full test suite**
 
 Run: `npx jest --verbose`
 Expected: ALL pass
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 13: Commit**
 
 ```bash
 git add src/adapters/plugins/agents/ReviewerPlugin.ts src/adapters/plugins/agents/OpsPlugin.ts src/adapters/plugins/agents/LearnerPlugin.ts tests/adapters/ReviewerPlugin.test.ts tests/adapters/OpsPlugin.test.ts tests/adapters/LearnerPlugin.test.ts
