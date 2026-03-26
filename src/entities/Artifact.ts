@@ -4,42 +4,40 @@ import { type ArtifactId, type TaskId, type AgentId } from "./ids"
 // Per-kind metadata types
 // ---------------------------------------------------------------------------
 interface SpecMetadata {
-  readonly version?: number
-  [key: string]: unknown
+  readonly requirementCount: number
+  readonly hasSuccessCriteria: boolean
 }
 
 interface PlanMetadata {
-  readonly estimatedSteps?: number
-  [key: string]: unknown
+  readonly stepCount: number
+  readonly estimatedTokens: number
 }
 
 interface DesignMetadata {
-  readonly diagrams?: readonly string[]
-  [key: string]: unknown
+  readonly componentCount: number
 }
 
 interface DiffMetadata {
-  readonly linesAdded?: number
-  readonly linesRemoved?: number
-  [key: string]: unknown
+  readonly filesChanged: number
+  readonly linesAdded: number
+  readonly linesRemoved: number
 }
 
 interface ReviewMetadata {
-  readonly approved: boolean
-  readonly comments: readonly string[]
-  [key: string]: unknown
+  readonly verdict: "approved" | "rejected"
+  readonly issueCount: number
 }
 
 interface TestReportMetadata {
-  readonly passed?: number
-  readonly failed?: number
-  readonly skipped?: number
-  [key: string]: unknown
+  readonly passed: number
+  readonly failed: number
+  readonly coverageDelta: number
 }
 
 interface MetricReportMetadata {
-  readonly metrics?: Record<string, number>
-  [key: string]: unknown
+  readonly metricCount: number
+  readonly periodStart: number
+  readonly periodEnd: number
 }
 
 // ---------------------------------------------------------------------------
