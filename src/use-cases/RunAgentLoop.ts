@@ -24,6 +24,7 @@ export class RunAgentLoop implements AgentExecutor {
   async *run(agentId: AgentId, config: AgentConfig, task: Task, _projectId: ProjectId): AsyncIterable<AgentEvent> {
     let conversation = createConversation(agentId)
     let turnCount = 0
+    let lastContent = ""
 
     while (turnCount < MAX_TURNS) {
       turnCount++
@@ -63,6 +64,7 @@ export class RunAgentLoop implements AgentExecutor {
       }
 
       const { content, toolCalls, tokensIn, tokensOut, stopReason } = promptResult.value
+      lastContent = content
 
       // 4. Update conversation
       if (conversation.turns.length === 0) {
@@ -127,7 +129,7 @@ export class RunAgentLoop implements AgentExecutor {
       }
 
       if (outcome === "success") {
-        yield { type: "task_completed", data: { taskId: task.id, turns: turnCount } }
+        yield { type: "task_completed", data: { taskId: task.id, turns: turnCount, content: lastContent } }
         return
       }
 

@@ -199,4 +199,45 @@ describe("RunAgentLoop", () => {
     const failedEvent = events.find(e => e.type === "task_failed")
     expect(failedEvent?.data["reason"]).toMatch(/max turns/i)
   }, 10000)
+
+  it("includes content in task_completed event", async () => {
+    const task = makeTask()
+
+    const checkBudget = {
+      execute: jest.fn().mockResolvedValue({ ok: true, value: { canProceed: true, remaining: 900, estimatedCost: 100 } }),
+    } as unknown as CheckBudget
+
+    const promptAgent = {
+      execute: jest.fn().mockResolvedValue({
+        ok: true,
+        value: { content: "Final AI response content", toolCalls: [], tokensIn: 50, tokensOut: 30, stopReason: "end_turn" },
+      }),
+    } as unknown as PromptAgent
+
+    const executeToolCalls = {
+      execute: jest.fn().mockResolvedValue([]),
+    } as unknown as ExecuteToolCalls
+
+    const recordTurnMetrics = {
+      execute: jest.fn().mockResolvedValue({ ok: true, value: undefined }),
+    } as unknown as RecordTurnMetrics
+
+    const evaluateTurnOutcome = {
+      execute: jest.fn().mockResolvedValue({ ok: true, value: { outcome: "success" } }),
+    } as unknown as EvaluateTurnOutcome
+
+    const tasks: TaskRepository = {
+      findById: jest.fn().mockResolvedValue(task),
+      findByGoalId: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue(undefined),
+      update: jest.fn().mockResolvedValue(undefined),
+    }
+
+    const loop = new RunAgentLoop(checkBudget, promptAgent, executeToolCalls, recordTurnMetrics, evaluateTurnOutcome, tasks)
+    const events = await collectEvents(loop, task)
+
+    const completedEvent = events.find(e => e.type === "task_completed")
+    expect(completedEvent).toBeDefined()
+    expect(completedEvent?.data["content"]).toBe("Final AI response content")
+  })
 })
