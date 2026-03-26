@@ -57,12 +57,16 @@ interface ChannelMessage {
   readonly to: AgentId | "all"
   readonly content: string
   readonly replyTo: MessageId | null
-  readonly timestamp: number
+  readonly timestamp: Date
 }
 ```
 Pure data type, no behavior. Helper: `createChannelMessage()`.
 
 **Add `retryCount: number` to `Task` entity.** `EvaluateKeepDiscard` checks retry count against a configurable max. The entity must model this state.
+
+**Add `branch: string | null` to `Task` entity.** Developer sets this when creating the worktree. `MergeBranch` and `DiscardBranch` read it from the task — the Supervisor passes only `taskId`, and the use case resolves the branch internally. This avoids storing branch state in adapters.
+
+**Add `lastActiveAt: Date` to `Agent` entity.** Updated in the message emit path (when a message with an `agentId` field is emitted). `DetectStuckAgent` queries `AgentRegistry` and compares timestamps. Stateless use case, state on the entity where it belongs.
 
 **`KeepDiscardRecord`** — Structured data for Phase 4 Learner queries:
 ```typescript
@@ -132,18 +136,18 @@ Construction logic stays in Layer 4. Plugins call the factory when they have a w
 **`EvaluateKeepDiscard`** — Returns a decision, does not execute it (SRP):
 - Input: `taskId`, `verdict` ("approved" | "rejected"), `maxRetries` (from config, not hardcoded)
 - Output: `"keep"` | `"discard"` | `"retry"`
-- Logic: if approved → "keep". If rejected and `retryCount < maxRetries` → "retry". If rejected and retries exhausted → "discard".
-- Single port dependency (`TaskRepository` for retry count), trivially testable with a mock.
+- Logic: if approved → "keep". If rejected and `retryCount < maxRetries` → increment `retryCount`, save task, return "retry". If rejected and retries exhausted → "discard".
+- Owns the `retryCount` write: the decision and state update are one atomic operation. Callers don't need to increment separately.
 - Dependencies: `TaskRepository`
 
 **`MergeBranch`** — Executes a keep decision:
-- Input: `taskId`, `branch`
-- Calls `WorktreeManager.merge()`, transitions task to "approved", emits `branch.merged`
+- Input: `taskId`
+- Reads `task.branch` from `TaskRepository`, calls `WorktreeManager.merge()`, transitions task to "approved", emits `branch.merged`
 - Dependencies: `TaskRepository`, `WorktreeManager`, `MessagePort`
 
 **`DiscardBranch`** — Executes a discard decision:
-- Input: `taskId`, `branch`, `reason`
-- Calls `WorktreeManager.delete()`, transitions task to "discarded", emits `branch.discarded`
+- Input: `taskId`, `reason`
+- Reads `task.branch` from `TaskRepository`, calls `WorktreeManager.delete()`, transitions task to "discarded", emits `branch.discarded`
 - Dependencies: `TaskRepository`, `WorktreeManager`, `MessagePort`
 
 **`SendChannelMessage`** — Validate and emit a channel message:
@@ -154,8 +158,8 @@ Construction logic stays in Layer 4. Plugins call the factory when they have a w
 **`CreateArtifact`** — Store an artifact and link it to a task:
 - Input: `Artifact`
 - Creates artifact in `ArtifactRepository`, appends ID to task's `artifacts` array
-- Emits appropriate typed message (`spec.created`, `plan.created`, etc.) — exhaustive switch on `artifact.kind`
-- Dependencies: `ArtifactRepository`, `TaskRepository`, `MessagePort`
+- Does NOT emit messages — that's the caller's responsibility, because the caller knows the semantic meaning of the artifact (e.g., ProductPlugin emits `spec.created`, ReviewerPlugin emits `review.approved`). Consistent pattern: storage is separated from notification.
+- Dependencies: `ArtifactRepository`, `TaskRepository`
 
 **`DetectStuckAgent`** — Runs on a configurable interval:
 - Checks each in-progress agent: if time since last emitted message exceeds `agentTimeoutMs` (configurable, default: 60 seconds), emits `agent.stuck`
@@ -189,9 +193,10 @@ Returns a promise that resolves when a matching message is emitted, rejects on t
 - Unit tests for `ChannelMessage`, `KeepDiscardRecord` creation helpers
 - Unit tests for `PipelineConfig.roleMapping` lookup
 - Unit tests for tightened `Artifact` metadata (verify index signatures removed, type narrowing works)
-- Unit tests for `EvaluateKeepDiscard` (approved→keep, rejected+retries→retry, rejected+exhausted→discard)
+- Unit tests for Task `branch` and `retryCount` fields, Agent `lastActiveAt` field
+- Unit tests for `EvaluateKeepDiscard` (approved→keep, rejected+retries→retry with retryCount incremented, rejected+exhausted→discard)
 - Unit tests for `MergeBranch`, `DiscardBranch` (mock `WorktreeManager`, verify state transitions and messages)
-- Unit tests for `CreateArtifact` (verify artifact stored, task updated, correct message type emitted per kind)
+- Unit tests for `CreateArtifact` (verify artifact stored, task.artifacts updated, no message emitted — caller's responsibility)
 - Unit tests for `SendChannelMessage` (valid agent, invalid agent)
 - Unit tests for `DetectStuckAgent` (inject mock clock, verify `agent.stuck` emitted at threshold)
 - Unit tests for `DeterministicProvider` (returns configured tool calls, satisfies `AICompletionProvider` contract)
@@ -227,8 +232,8 @@ All plugins delegate to `AgentExecutor` (`RunAgentLoop`). No plugin hand-rolls a
 - Each message type maps to exactly one use case call:
   - `goal.created` → `DecomposeGoal` + `AssignTask` for first phase
   - `task.completed` → AI decides next phase (via `PromptAgent`), validates via `canAdvancePhase()`, calls `AssignTask`
-  - `review.approved` → `EvaluateKeepDiscard` → `MergeBranch`
-  - `review.rejected` → `EvaluateKeepDiscard` → retry (`AssignTask` back to Developer) or `DiscardBranch`
+  - `review.approved` → `EvaluateKeepDiscard` → `MergeBranch(taskId)`
+  - `review.rejected` → `EvaluateKeepDiscard` → retry (`AssignTask` back to Developer) or `DiscardBranch(taskId, reason)`
   - `budget.exceeded` / `agent.stuck` → AI decides extend or discard
 - Supervisor uses `PromptAgent` directly for single-turn AI decisions (routing, not artifact production). This is correct: agents that do work go through the executor; agents that make decisions call `PromptAgent`.
 - Model: Opus (orchestration quality is worth the cost)
