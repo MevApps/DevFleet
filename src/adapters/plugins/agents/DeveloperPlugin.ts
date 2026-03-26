@@ -9,6 +9,7 @@ import type { MessagePort } from "../../../use-cases/ports/MessagePort"
 import type { WorktreeManager } from "../../../use-cases/ports/WorktreeManager"
 import type { FileSystemFactory } from "../../../use-cases/ports/FileSystem"
 import type { ShellExecutorFactory } from "../../../use-cases/ports/ShellExecutor"
+import type { ScopedExecutorFactory } from "../../../use-cases/ports/ScopedExecutorFactory"
 import { ROLES } from "../../../entities/AgentRole"
 
 export interface DeveloperPluginDeps {
@@ -22,6 +23,7 @@ export interface DeveloperPluginDeps {
   readonly worktreeManager?: WorktreeManager
   readonly fsFactory?: FileSystemFactory
   readonly shellFactory?: ShellExecutorFactory
+  readonly scopedExecutorFactory?: ScopedExecutorFactory
 }
 
 export const DEVELOPER_TOOLS: ToolDefinition[] = [
@@ -129,12 +131,19 @@ export class DeveloperPlugin implements PluginIdentity, Lifecycle, PluginMessage
 
     // Create worktree isolation when manager is available
     let branchName: string | null = null
+    let worktreePath: string | null = null
     if (this.deps.worktreeManager) {
       branchName = `devfleet/task-${task.id}`
-      await this.deps.worktreeManager.create(branchName)
+      worktreePath = await this.deps.worktreeManager.create(branchName)
       const updatedTask = { ...task, branch: branchName, version: task.version + 1 }
       await this.deps.taskRepo.update(updatedTask)
     }
+
+    // Use a scoped executor for the worktree path when the factory is provided,
+    // otherwise fall back to the shared executor wired at composition time.
+    const executor = (worktreePath && this.deps.scopedExecutorFactory)
+      ? this.deps.scopedExecutorFactory(worktreePath)
+      : this.deps.executor
 
     const config = {
       role: ROLES.DEVELOPER,
@@ -144,7 +153,7 @@ export class DeveloperPlugin implements PluginIdentity, Lifecycle, PluginMessage
       budget: task.budget,
     }
 
-    for await (const event of this.deps.executor.run(this.deps.agentId, config, task, this.deps.projectId)) {
+    for await (const event of executor.run(this.deps.agentId, config, task, this.deps.projectId)) {
       if (event.type === "task_completed" && this.deps.bus) {
         await this.deps.bus.emit({
           id: createMessageId(),

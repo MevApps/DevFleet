@@ -9,6 +9,7 @@ import { InMemoryBus } from "../../adapters/messaging/InMemoryBus"
 import { NodeFileSystem } from "../../adapters/filesystem/NodeFileSystem"
 import { NodeShellExecutor } from "../../adapters/shell/NodeShellExecutor"
 import { ClaudeProvider } from "../../adapters/ai-providers/ClaudeProvider"
+import { DeterministicProvider } from "../../adapters/ai-providers/DeterministicProvider"
 import { PluginRegistry } from "../../adapters/plugins/PluginRegistry"
 import { SupervisorPlugin } from "../../adapters/plugins/agents/SupervisorPlugin"
 import { ProductPlugin } from "../../adapters/plugins/agents/ProductPlugin"
@@ -252,11 +253,11 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const mergeBranch = new MergeBranch(taskRepo, worktreeManager, bus)
   const discardBranch = new DiscardBranch(taskRepo, worktreeManager, bus)
   const createArtifact = new CreateArtifactUseCase(artifactRepo, taskRepo)
-  // DetectStuckAgent is available for periodic polling (Phase 3+)
-  void DetectStuckAgent
+  const detectStuckAgent = new DetectStuckAgent(agentRegistry, bus)
+  const agentTimeoutMs = config.agentTimeoutMs ?? 300_000 // 5 min
 
   // -------------------------------------------------------------------------
-  // 5. One RunAgentLoop per agent (shared use cases, different AI config)
+  // 5. One RunAgentLoop per agent tier (different AI + tool configurations)
   // -------------------------------------------------------------------------
   const agentExecutor = new RunAgentLoop(
     checkBudget,
@@ -266,6 +267,51 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     evaluateTurnOutcome,
     taskRepo,
   )
+
+  // Ops executor: DeterministicProvider drives build/test commands deterministically.
+  // Using a separate RunAgentLoop ensures Ops never routes through the shared AI provider.
+  const buildCommand = config.buildCommand ?? "npm run build"
+  const testCommand = config.testCommand ?? "npm test"
+  const opsProvider = useMock
+    ? new MockAIProvider()
+    : new DeterministicProvider([
+        { name: "shell_run", input: { command: buildCommand } },
+        { name: "shell_run", input: { command: testCommand } },
+      ])
+  const opsPromptAgent = new PromptAgent(opsProvider, opsProvider)
+  const opsExecuteToolCalls = new ExecuteToolCalls(fileSystem, shell)
+  const opsExecutor = new RunAgentLoop(
+    checkBudget,
+    opsPromptAgent,
+    opsExecuteToolCalls,
+    recordTurnMetrics,
+    evaluateTurnOutcome,
+    taskRepo,
+  )
+
+  // Scoped executor factory: DeveloperPlugin calls this with the worktree path to get
+  // a RunAgentLoop whose FileSystem and ShellExecutor are rooted at that directory.
+  // The factory is the Layer 4 abstraction — the plugin receives a port, not concrete classes.
+  const fsFactory = useMock
+    ? (_path: string): FileSystem => createMockFileSystem()
+    : (path: string): FileSystem => new NodeFileSystem(path)
+  const shellFactory = useMock
+    ? (_path: string): ShellExecutor => createMockShell()
+    : (path: string): ShellExecutor => new NodeShellExecutor(path)
+
+  const scopedExecutorFactory = (workingDir: string): RunAgentLoop => {
+    const scopedFs = fsFactory(workingDir)
+    const scopedShell = shellFactory(workingDir)
+    const scopedExecuteToolCalls = new ExecuteToolCalls(scopedFs, scopedShell)
+    return new RunAgentLoop(
+      checkBudget,
+      promptAgent,
+      scopedExecuteToolCalls,
+      recordTurnMetrics,
+      evaluateTurnOutcome,
+      taskRepo,
+    )
+  }
 
   // -------------------------------------------------------------------------
   // 6. Agent IDs and models
@@ -363,6 +409,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     model: developerModel,
     bus,
     worktreeManager,
+    scopedExecutorFactory,
   })
 
   const reviewerPlugin = new ReviewerPlugin({
@@ -380,7 +427,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const opsPlugin = new OpsPlugin({
     agentId: opsId,
     projectId,
-    executor: agentExecutor,
+    executor: opsExecutor,
     taskRepo,
     artifactRepo,
     createArtifact,
@@ -417,6 +464,10 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     })
   }
 
+  // I2: DetectStuckAgent runs on an interval so stuck agents are caught without polling.
+  // The handle is captured so stop() can cancel it cleanly.
+  let stuckAgentInterval: ReturnType<typeof setInterval> | null = null
+
   return {
     taskRepo,
     goalRepo,
@@ -427,7 +478,19 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     bus,
     pluginRegistry,
     pipelineTimeoutMs,
-    start: () => pluginRegistry.startAll(),
-    stop: () => pluginRegistry.stopAll(),
+    start: async () => {
+      await pluginRegistry.startAll()
+      stuckAgentInterval = setInterval(
+        () => { void detectStuckAgent.execute(agentTimeoutMs) },
+        agentTimeoutMs,
+      )
+    },
+    stop: async () => {
+      if (stuckAgentInterval !== null) {
+        clearInterval(stuckAgentInterval)
+        stuckAgentInterval = null
+      }
+      await pluginRegistry.stopAll()
+    },
   }
 }
