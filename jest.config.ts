@@ -12,7 +12,7 @@ const config: Config = {
     "^@plugin-sdk/(.*)$": "<rootDir>/src/plugin-sdk/$1",
   },
   transform: {
-    "^.+\\.ts$": "ts-jest",
+    "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.test.json" }],
   },
 }
 
