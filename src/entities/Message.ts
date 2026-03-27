@@ -213,6 +213,17 @@ interface AgentStuckMessage extends BaseMessage {
   readonly retryCount: number
 }
 
+interface AgentPausedMessage extends BaseMessage {
+  readonly type: "agent.paused"
+  readonly agentId: AgentId
+  readonly reason: string
+}
+
+interface AgentResumedMessage extends BaseMessage {
+  readonly type: "agent.resumed"
+  readonly agentId: AgentId
+}
+
 // ---------------------------------------------------------------------------
 // Union + utilities
 // ---------------------------------------------------------------------------
@@ -243,6 +254,8 @@ export type Message =
   | CeoOverrideMessage
   | ScheduleIdeationMessage
   | AgentStuckMessage
+  | AgentPausedMessage
+  | AgentResumedMessage
 
 export type MessageType = Message["type"]
 
