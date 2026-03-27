@@ -47,6 +47,13 @@ import type {
 import type { TokenBudget } from "../../entities/Budget"
 import type { FileSystem } from "../../use-cases/ports/FileSystem"
 import type { ShellExecutor } from "../../use-cases/ports/ShellExecutor"
+import type { TaskRepository } from "../../use-cases/ports/TaskRepository"
+import type { GoalRepository } from "../../use-cases/ports/GoalRepository"
+import type { AgentRegistry } from "../../use-cases/ports/AgentRegistry"
+import type { EventStore } from "../../use-cases/ports/EventStore"
+import type { MetricRecorder } from "../../use-cases/ports/MetricRecorder"
+import type { ArtifactRepository } from "../../use-cases/ports/ArtifactRepository"
+import type { MessagePort } from "../../use-cases/ports/MessagePort"
 
 // ---------------------------------------------------------------------------
 // Config
@@ -66,16 +73,16 @@ export interface DevFleetConfig {
 }
 
 // ---------------------------------------------------------------------------
-// System interface (exposes repos and bus for test access)
+// System interface (exposes port interfaces — dependency rule respected)
 // ---------------------------------------------------------------------------
 export interface DevFleetSystem {
-  readonly taskRepo: InMemoryTaskRepo
-  readonly goalRepo: InMemoryGoalRepo
-  readonly agentRegistry: InMemoryAgentRegistry
-  readonly eventStore: InMemoryEventStore
-  readonly metricRecorder: InMemoryMetricRecorder
-  readonly artifactRepo: InMemoryArtifactRepo
-  readonly bus: InMemoryBus
+  readonly taskRepo: TaskRepository
+  readonly goalRepo: GoalRepository
+  readonly agentRegistry: AgentRegistry
+  readonly eventStore: EventStore
+  readonly metricRecorder: MetricRecorder
+  readonly artifactRepo: ArtifactRepository
+  readonly bus: MessagePort
   readonly pluginRegistry: PluginRegistry
   readonly pipelineTimeoutMs: number
   start(): Promise<void>
