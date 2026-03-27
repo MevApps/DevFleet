@@ -789,11 +789,24 @@ interface CeoAlertMessage extends BaseMessage {
 }
 ```
 
-Update the `Message` union to include all 5 new types (note: `InsightGeneratedMessage` already exists):
+Also update the existing `InsightGeneratedMessage` to match the spec:
+
+```typescript
+// Replace the existing InsightGeneratedMessage:
+interface InsightGeneratedMessage extends BaseMessage {
+  readonly type: "insight.generated"
+  readonly insightId: string
+  readonly actionKind: string
+  readonly title: string
+  readonly confidence: number
+}
+```
+
+Update the `Message` union to include all 5 new types (`InsightGeneratedMessage` already exists — just updated above):
 
 ```typescript
 export type Message =
-  // ... existing 28 types ...
+  // ... existing 28 types (InsightGeneratedMessage already in the union) ...
   | InsightAcceptedMessage
   | InsightDismissedMessage
   | BudgetUpdatedMessage
@@ -1761,18 +1774,29 @@ git commit -m "refactor(phase4): LearnerPlugin uses KeepDiscardRepository, narro
 
 ---
 
-## Task 14: Refactor MetricsPresenter + Update DTOs
+## Task 14: Integration Layer — DTOs, Routes, Server, Composition Root (Atomic)
+
+> **IMPORTANT:** This task modifies MetricsPresenter constructor, metricsRoutes signature, DashboardDeps, and composition root in a SINGLE COMMIT. These changes are interdependent — committing them separately produces broken intermediate states.
 
 **Files:**
-- Modify: `src/adapters/presenters/MetricsPresenter.ts`
 - Modify: `src/adapters/presenters/dto.ts`
+- Modify: `src/adapters/presenters/MetricsPresenter.ts`
 - Modify: `tests/adapters/presenters/MetricsPresenter.test.ts`
+- Create: `src/infrastructure/http/routes/insightRoutes.ts`
+- Create: `src/infrastructure/http/routes/alertRoutes.ts`
+- Create: `src/infrastructure/http/routes/systemRoutes.ts`
+- Modify: `src/infrastructure/http/routes/metricsRoutes.ts`
+- Modify: `src/infrastructure/http/createServer.ts`
+- Modify: `src/infrastructure/config/composition-root.ts`
+- Modify: `tests/infrastructure/http/routes.test.ts` (if it constructs MetricsPresenter)
 
 - [ ] **Step 1: Add new DTOs to dto.ts**
 
 Append to `src/adapters/presenters/dto.ts`:
 
 ```typescript
+import type { ProposedAction } from "../../entities/Insight"
+
 export interface FinancialsDTO {
   readonly totalTokensUsed: number
   readonly totalCostUsd: number
@@ -1807,7 +1831,7 @@ export interface InsightDetailDTO {
   readonly title: string
   readonly description: string
   readonly evidence: string
-  readonly proposedAction: unknown
+  readonly proposedAction: ProposedAction
   readonly status: string
   readonly createdAt: string
   readonly resolvedAt: string | null
@@ -1834,7 +1858,7 @@ export interface PluginHealthDTO {
 }
 ```
 
-- [ ] **Step 2: Refactor MetricsPresenter to delegate to ComputeFinancials**
+- [ ] **Step 2: Refactor MetricsPresenter**
 
 Replace `src/adapters/presenters/MetricsPresenter.ts`:
 
@@ -1869,31 +1893,13 @@ export class MetricsPresenter {
 
 - [ ] **Step 3: Update MetricsPresenter test**
 
-Update `tests/adapters/presenters/MetricsPresenter.test.ts` to construct `MetricsPresenter` with `(taskRepo, computeFinancials)` instead of `(taskRepo, eventStore)`. Create a `ComputeFinancials` instance with the test event store and pass it.
+In `tests/adapters/presenters/MetricsPresenter.test.ts`, change all `new MetricsPresenter(taskRepo, eventStore)` to `new MetricsPresenter(taskRepo, new ComputeFinancials(eventStore))`. Add import:
 
-- [ ] **Step 4: Run tests**
-
-Run: `npx jest tests/adapters/presenters/MetricsPresenter.test.ts --verbose`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/adapters/presenters/MetricsPresenter.ts src/adapters/presenters/dto.ts tests/adapters/presenters/MetricsPresenter.test.ts
-git commit -m "refactor(phase4): MetricsPresenter delegates to ComputeFinancials, add new DTOs"
+```typescript
+import { ComputeFinancials } from "@use-cases/ComputeFinancials"
 ```
 
----
-
-## Task 15: HTTP Routes (Insights, Alerts, System, Metrics)
-
-**Files:**
-- Create: `src/infrastructure/http/routes/insightRoutes.ts`
-- Create: `src/infrastructure/http/routes/alertRoutes.ts`
-- Create: `src/infrastructure/http/routes/systemRoutes.ts`
-- Modify: `src/infrastructure/http/routes/metricsRoutes.ts`
-
-- [ ] **Step 1: Create insightRoutes**
+- [ ] **Step 4: Create insightRoutes.ts**
 
 ```typescript
 // src/infrastructure/http/routes/insightRoutes.ts
@@ -1934,24 +1940,18 @@ export function insightRoutes(repo: InsightRepository, accept: AcceptInsight, di
   })
 
   router.post("/:id/accept", async (req, res, next) => {
-    try {
-      await accept.execute(req.params.id as InsightId)
-      res.json({ status: "applied" })
-    } catch (err) { next(err) }
+    try { await accept.execute(req.params.id as InsightId); res.json({ status: "applied" }) } catch (err) { next(err) }
   })
 
   router.post("/:id/dismiss", async (req, res, next) => {
-    try {
-      await dismiss.execute(req.params.id as InsightId)
-      res.json({ status: "dismissed" })
-    } catch (err) { next(err) }
+    try { await dismiss.execute(req.params.id as InsightId); res.json({ status: "dismissed" }) } catch (err) { next(err) }
   })
 
   return router
 }
 ```
 
-- [ ] **Step 2: Create alertRoutes**
+- [ ] **Step 5: Create alertRoutes.ts**
 
 ```typescript
 // src/infrastructure/http/routes/alertRoutes.ts
@@ -1991,7 +1991,7 @@ export function alertRoutes(eventStore: EventStore, prefsStore: AlertPreferences
 }
 ```
 
-- [ ] **Step 3: Create systemRoutes**
+- [ ] **Step 6: Create systemRoutes.ts**
 
 ```typescript
 // src/infrastructure/http/routes/systemRoutes.ts
@@ -2003,7 +2003,7 @@ export function systemRoutes(pluginRegistry: PluginRegistry): Router {
 
   router.get("/health", async (_req, res, next) => {
     try {
-      const plugins = pluginRegistry.allPlugins()
+      const plugins = pluginRegistry.discover()
       const results = await Promise.all(plugins.map(async (p) => ({
         name: p.identity.name,
         status: await p.lifecycle.healthCheck(),
@@ -2016,7 +2016,7 @@ export function systemRoutes(pluginRegistry: PluginRegistry): Router {
 }
 ```
 
-- [ ] **Step 4: Update metricsRoutes with focused endpoints**
+- [ ] **Step 7: Update metricsRoutes.ts**
 
 Replace `src/infrastructure/http/routes/metricsRoutes.ts`:
 
@@ -2066,41 +2066,41 @@ export function metricsRoutes(
 }
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Update createServer.ts**
 
-```bash
-git add src/infrastructure/http/routes/insightRoutes.ts src/infrastructure/http/routes/alertRoutes.ts src/infrastructure/http/routes/systemRoutes.ts src/infrastructure/http/routes/metricsRoutes.ts
-git commit -m "feat(phase4): add insight, alert, system routes; update metrics routes"
-```
-
----
-
-## Task 16: Update DashboardDeps + createServer
-
-**Files:**
-- Modify: `src/infrastructure/http/createServer.ts`
-
-- [ ] **Step 1: Extend DashboardDeps and mount new routes**
-
-Update `src/infrastructure/http/createServer.ts` to import new route modules, extend `DashboardDeps`, and mount the routes. Add to imports:
+Replace the full content of `src/infrastructure/http/createServer.ts`:
 
 ```typescript
-import type { PluginRegistry } from "../../adapters/plugins/PluginRegistry"
+import express from "express"
+import cors from "cors"
+import type { Express, Request, Response, NextFunction } from "express"
+import type { AgentRegistry } from "../../use-cases/ports/AgentRegistry"
+import type { GoalRepository } from "../../use-cases/ports/GoalRepository"
+import type { TaskRepository } from "../../use-cases/ports/TaskRepository"
+import type { EventStore } from "../../use-cases/ports/EventStore"
 import type { InsightRepository } from "../../use-cases/ports/InsightRepository"
+import type { AlertPreferencesStore } from "../../use-cases/ports/AlertPreferencesStore"
+import type { CreateGoalFromCeo } from "../../use-cases/CreateGoalFromCeo"
+import type { PauseAgent } from "../../use-cases/PauseAgent"
 import type { AcceptInsight } from "../../use-cases/AcceptInsight"
 import type { DismissInsight } from "../../use-cases/DismissInsight"
 import type { ComputeFinancials } from "../../use-cases/ComputeFinancials"
 import type { ComputeQualityMetrics } from "../../use-cases/ComputeQualityMetrics"
 import type { ComputePhaseTimings } from "../../use-cases/ComputePhaseTimings"
-import type { AlertPreferencesStore } from "../../use-cases/ports/AlertPreferencesStore"
+import type { LiveFloorPresenter } from "../../adapters/presenters/LiveFloorPresenter"
+import type { PipelinePresenter } from "../../adapters/presenters/PipelinePresenter"
+import type { MetricsPresenter } from "../../adapters/presenters/MetricsPresenter"
+import type { PluginRegistry } from "../../adapters/plugins/PluginRegistry"
+import type { SSEManager } from "./sseManager"
+import { agentRoutes } from "./routes/agentRoutes"
+import { goalRoutes } from "./routes/goalRoutes"
+import { taskRoutes } from "./routes/taskRoutes"
+import { eventRoutes } from "./routes/eventRoutes"
+import { metricsRoutes } from "./routes/metricsRoutes"
 import { insightRoutes } from "./routes/insightRoutes"
 import { alertRoutes } from "./routes/alertRoutes"
 import { systemRoutes } from "./routes/systemRoutes"
-```
 
-Extend `DashboardDeps`:
-
-```typescript
 export interface DashboardDeps {
   readonly agentRegistry: AgentRegistry
   readonly goalRepo: GoalRepository
@@ -2121,62 +2121,80 @@ export interface DashboardDeps {
   readonly computeTimings: ComputePhaseTimings
   readonly alertPreferencesStore: AlertPreferencesStore
 }
+
+export function createServer(deps: DashboardDeps): Express {
+  const app = express()
+
+  app.use(cors())
+  app.use(express.json())
+
+  app.get("/api/health", (_req: Request, res: Response) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() })
+  })
+
+  app.use("/api/agents", agentRoutes(deps.agentRegistry, deps.pauseAgent))
+  app.use("/api/goals", goalRoutes(deps.goalRepo, deps.createGoal))
+  app.use("/api/tasks", taskRoutes(deps.taskRepo))
+  app.use("/api/events", eventRoutes(deps.eventStore, deps.sseManager))
+  app.use("/api/metrics", metricsRoutes(deps.metrics, deps.computeFinancials, deps.computeQuality, deps.computeTimings))
+  app.use("/api/insights", insightRoutes(deps.insightRepo, deps.acceptInsight, deps.dismissInsight))
+  app.use("/api/alerts", alertRoutes(deps.eventStore, deps.alertPreferencesStore))
+  app.use("/api/system", systemRoutes(deps.pluginRegistry))
+
+  app.get("/api/live-floor", async (_req: Request, res: Response, next: NextFunction) => {
+    try { res.json(await deps.liveFloor.present()) } catch (err) { next(err) }
+  })
+
+  app.get("/api/pipeline", async (_req: Request, res: Response, next: NextFunction) => {
+    try { res.json(await deps.pipeline.present()) } catch (err) { next(err) }
+  })
+
+  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    console.error("[HTTP]", err.message)
+    res.status(500).json({ error: "Internal server error" })
+  })
+
+  return app
+}
 ```
 
-Add route mounts in `createServer()` after the existing `app.use` lines:
+- [ ] **Step 9: Update composition root**
+
+Apply the following changes to `src/infrastructure/config/composition-root.ts`. The implementing agent should read the current file first, then apply these changes:
+
+**Add imports** (after existing imports):
 
 ```typescript
-app.use("/api/insights", insightRoutes(deps.insightRepo, deps.acceptInsight, deps.dismissInsight))
-app.use("/api/alerts", alertRoutes(deps.eventStore, deps.alertPreferencesStore))
-app.use("/api/system", systemRoutes(deps.pluginRegistry))
+import { InMemoryKeepDiscardRepository } from "../../adapters/storage/InMemoryKeepDiscardRepository"
+import { InMemoryInsightRepository } from "../../adapters/storage/InMemoryInsightRepository"
+import { InMemoryBudgetConfigStore } from "../../adapters/storage/InMemoryBudgetConfigStore"
+import { InMemoryAlertPreferencesStore } from "../../adapters/storage/InMemoryAlertPreferencesStore"
+import { FileSystemAgentPromptStore } from "../../adapters/filesystem/FileSystemAgentPromptStore"
+import { FileSystemSkillStore } from "../../adapters/filesystem/FileSystemSkillStore"
+import { NoOpNotificationAdapter } from "../../adapters/notifications/NoOpNotificationAdapter"
+import { ComputeFinancials } from "../../use-cases/ComputeFinancials"
+import { ComputeQualityMetrics } from "../../use-cases/ComputeQualityMetrics"
+import { ComputePhaseTimings } from "../../use-cases/ComputePhaseTimings"
+import { AcceptInsight } from "../../use-cases/AcceptInsight"
+import { DismissInsight } from "../../use-cases/DismissInsight"
+import { EvaluateAlert, type AlertRule } from "../../use-cases/EvaluateAlert"
+import { toSystemEvent } from "./toSystemEvent"
+import { join } from "node:path"
 ```
 
-Update the metrics route mount:
-
-```typescript
-app.use("/api/metrics", metricsRoutes(deps.metrics, deps.computeFinancials, deps.computeQuality, deps.computeTimings))
-```
-
-- [ ] **Step 2: Commit**
-
-```bash
-git add src/infrastructure/http/createServer.ts
-git commit -m "feat(phase4): extend DashboardDeps and mount new routes"
-```
-
----
-
-## Task 17: Composition Root Rewire
-
-**Files:**
-- Modify: `src/infrastructure/config/composition-root.ts`
-
-- [ ] **Step 1: Wire all Phase 4 dependencies**
-
-This is the largest single change. Update `composition-root.ts`:
-
-1. Add imports for all new adapters, use cases, and ports
-2. Create new storage instances after existing ones:
+**Add after existing storage creation** (after `const artifactRepo = ...`):
 
 ```typescript
 const keepDiscardRepo = new InMemoryKeepDiscardRepository()
 const insightRepo = new InMemoryInsightRepository()
 const budgetConfigStore = new InMemoryBudgetConfigStore()
 const alertPreferencesStore = new InMemoryAlertPreferencesStore()
-```
-
-3. Create filesystem adapters:
-
-```typescript
-const promptsDir = join(config.workspaceDir, "agent-prompts")
-const agentPromptStore = new FileSystemAgentPromptStore(promptsDir)
+const agentPromptStore = new FileSystemAgentPromptStore(join(config.workspaceDir, "agent-prompts"))
 const skillStore = new FileSystemSkillStore(join(config.workspaceDir, "skills"))
 const notificationPort = new NoOpNotificationAdapter()
 ```
 
-4. Replace `loadPrompt()` calls with `agentPromptStore` (but keep synchronous startup — read prompts eagerly in `start()`).
-
-5. Create new use cases:
+**Add after existing use case creation** (after `const agentTimeoutMs = ...`):
 
 ```typescript
 const computeFinancials = new ComputeFinancials(eventStore)
@@ -2186,28 +2204,7 @@ const acceptInsight = new AcceptInsight(insightRepo, agentPromptStore, budgetCon
 const dismissInsight = new DismissInsight(insightRepo)
 ```
 
-6. Wire universal event persistence (replaces LearnerPlugin.recordSystemEvent):
-
-```typescript
-bus.subscribe({}, async (message) => {
-  await eventStore.append(toSystemEvent(message))
-})
-```
-
-7. Wire alert rules and EvaluateAlert:
-
-```typescript
-const alertRules: ReadonlyArray<AlertRule> = [
-  { trigger: "goal.completed", severity: "info", evaluate: (msg) => ({ severity: "info", title: "Goal completed", body: `Goal finished`, goalId: "goalId" in msg ? (msg as any).goalId : undefined }) },
-  { trigger: "agent.stuck", severity: "warning", evaluate: (msg) => ({ severity: "warning", title: "Agent stuck", body: `Agent stuck after retries`, taskId: "taskId" in msg ? (msg as any).taskId : undefined }) },
-  { trigger: "budget.exceeded", severity: "warning", evaluate: (msg) => ({ severity: "warning", title: "Budget exceeded", body: `Task exceeded budget`, taskId: "taskId" in msg ? (msg as any).taskId : undefined }) },
-  { trigger: "insight.generated", severity: "info", evaluate: (msg) => ({ severity: "info", title: "New recommendation", body: `Learner has a suggestion` }) },
-]
-const evaluateAlert = new EvaluateAlert(notificationPort, alertPreferencesStore, bus, alertRules)
-bus.subscribe({ types: alertRules.map(r => r.trigger) }, (message) => evaluateAlert.execute(message))
-```
-
-8. Update LearnerPlugin construction:
+**Replace** the `learnerPlugin` construction:
 
 ```typescript
 const learnerPlugin = new LearnerPlugin({
@@ -2218,38 +2215,65 @@ const learnerPlugin = new LearnerPlugin({
 })
 ```
 
-9. Update MetricsPresenter construction:
+**Replace** the `metricsPresenter` construction:
 
 ```typescript
 const metricsPresenter = new MetricsPresenter(taskRepo, computeFinancials)
 ```
 
-10. Extend `dashboardDeps` with all new fields:
+**Add** universal event persistence and alert wiring (before `const dashboardDeps`):
 
 ```typescript
-const dashboardDeps: DashboardDeps = {
-  // ...existing...
-  pluginRegistry,
-  insightRepo,
-  acceptInsight,
-  dismissInsight,
-  computeFinancials: computeFinancials,
-  computeQuality: computeQuality,
-  computeTimings: computeTimings,
-  alertPreferencesStore,
-}
+// Universal event persistence — replaces LearnerPlugin.recordSystemEvent
+bus.subscribe({}, async (message) => {
+  await eventStore.append(toSystemEvent(message))
+})
+
+// Alert rules
+const alertRules: ReadonlyArray<AlertRule> = [
+  { trigger: "goal.completed", severity: "info", evaluate: (msg) => ({ severity: "info", title: "Goal completed", body: "Goal finished", goalId: "goalId" in msg ? (msg as any).goalId : undefined }) },
+  { trigger: "agent.stuck", severity: "warning", evaluate: (msg) => ({ severity: "warning", title: "Agent stuck", body: "Agent stuck after retries", taskId: "taskId" in msg ? (msg as any).taskId : undefined }) },
+  { trigger: "budget.exceeded", severity: "warning", evaluate: (msg) => ({ severity: "warning", title: "Budget exceeded", body: "Task exceeded budget", taskId: "taskId" in msg ? (msg as any).taskId : undefined }) },
+  { trigger: "review.rejected", severity: "urgent", evaluate: (msg) => { if (!("retryCount" in msg) || (msg as any).retryCount < 3) return null; return { severity: "urgent", title: "Rejection loop", body: "Task rejected 3+ times", taskId: "taskId" in msg ? (msg as any).taskId : undefined } } },
+  { trigger: "insight.generated", severity: "info", evaluate: (msg) => ({ severity: "info", title: "New recommendation", body: "Learner has a suggestion", insightId: "insightId" in msg ? (msg as any).insightId : undefined }) },
+  { trigger: "insight.accepted", severity: "info", evaluate: (msg) => ({ severity: "info", title: "Insight applied", body: "title" in msg ? (msg as any).title : "Applied", insightId: "insightId" in msg ? (msg as any).insightId : undefined }) },
+]
+const evaluateAlert = new EvaluateAlert(notificationPort, alertPreferencesStore, bus, alertRules)
+bus.subscribe({ types: alertRules.map(r => r.trigger) }, (message) => evaluateAlert.execute(message))
 ```
 
-- [ ] **Step 2: Run full test suite**
+**Extend** `dashboardDeps` — add after `sseManager`:
+
+```typescript
+pluginRegistry,
+insightRepo,
+acceptInsight,
+dismissInsight,
+computeFinancials,
+computeQuality: computeQuality,
+computeTimings: computeTimings,
+alertPreferencesStore,
+```
+
+- [ ] **Step 10: Update any tests that construct MetricsPresenter or DashboardDeps**
+
+Search for `new MetricsPresenter` and `DashboardDeps` in tests. Update constructor args. If `tests/infrastructure/http/routes.test.ts` constructs a DashboardDeps mock, add the new required fields.
+
+- [ ] **Step 11: Run full test suite**
 
 Run: `npx jest --verbose`
-Expected: All tests PASS. Fix any compilation errors from updated constructor signatures.
+Expected: All tests PASS
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 12: Type check**
+
+Run: `npx tsc --noEmit`
+Expected: No errors
+
+- [ ] **Step 13: Commit**
 
 ```bash
-git add src/infrastructure/config/composition-root.ts
-git commit -m "feat(phase4): rewire composition root with all Phase 4 dependencies"
+git add src/adapters/presenters/dto.ts src/adapters/presenters/MetricsPresenter.ts src/infrastructure/http/routes/insightRoutes.ts src/infrastructure/http/routes/alertRoutes.ts src/infrastructure/http/routes/systemRoutes.ts src/infrastructure/http/routes/metricsRoutes.ts src/infrastructure/http/createServer.ts src/infrastructure/config/composition-root.ts tests/
+git commit -m "feat(phase4): integration layer — DTOs, routes, server, composition root (atomic)"
 ```
 
 ---
@@ -3218,11 +3242,20 @@ git commit -m "fix(phase4): final verification fixes"
 
 ## Self-Review Errata
 
-The following issues were identified during self-review. The implementing agent MUST address these during execution:
+Issues identified during self-review. Items marked **FIXED** have been addressed in the plan. Remaining items the implementing agent MUST address during execution:
 
-### Coverage Gaps
+### Fixed in Plan
 
-1. **Missing dashboard components:** Tasks 19-22 omit 7 components from the spec's file inventory. The implementing agent must also create:
+- ~~Broken commits in Tasks 14-17~~ → **FIXED:** Merged into single atomic Task 14
+- ~~`PluginRegistry.allPlugins()` doesn't exist~~ → **FIXED:** Changed to `pluginRegistry.discover()` (existing method)
+- ~~`InsightGeneratedMessage` field mismatch~~ → **FIXED:** Task 6 now updates existing interface to match spec
+- ~~Task 17 is prose not code~~ → **FIXED:** Task 14 provides complete code for all files
+- ~~Missing alert rules~~ → **FIXED:** Task 14 Step 9 defines all 6 rules including `review.rejected` and `insight.accepted`
+- ~~`InsightDetailDTO.proposedAction: unknown`~~ → **FIXED:** Changed to `ProposedAction` type with import
+
+### Remaining (Implementing Agent Must Address)
+
+1. **Missing dashboard components:** Tasks 15-19 (renumbered) omit 7 components from the spec's file inventory. Create these additional files:
    - `dashboard/src/components/financials/cost-per-goal-chart.tsx` — bar chart from `costPerGoal`
    - `dashboard/src/components/financials/model-tier-breakdown.tsx` — donut chart from `modelTierBreakdown`
    - `dashboard/src/components/quality/keep-rate-by-agent.tsx` — bar chart from `keepRateByAgent`
@@ -3231,26 +3264,8 @@ The following issues were identified during self-review. The implementing agent 
    - `dashboard/src/components/system/phase-timings.tsx` — extract inline timings into reusable component
    - `dashboard/src/components/insights/insight-history.tsx` — table of applied/dismissed insights
 
-2. **Missing Learner periodic sweep:** Task 17 wires `onGoalCompleted` but never sets up the periodic `setInterval` sweep (default 1 hour) or its cleanup in `stop()`. Add this to the composition root alongside the existing `DetectStuckAgent` interval pattern.
+2. **Missing Learner periodic sweep:** Task 14 wires `onGoalCompleted` but never sets up the periodic `setInterval` sweep (default 1 hour) or its cleanup in `stop()`. Add to composition root using the existing `DetectStuckAgent` interval pattern.
 
-3. **Missing alert rules:** Task 17 defines only 4 alert rules. Add the missing 2:
-   - `review.rejected` (urgent, only when `iteration >= 3`)
-   - `insight.accepted` (info, always)
+3. **Alerts preferences modal:** Task 20 (renumbered) omits the settings UI in the drawer. Add a settings button that opens a modal with min severity selector and muted triggers checkboxes.
 
-4. **`InsightGeneratedMessage` already exists** in `Message.ts` — Task 6 correctly notes this. No action needed.
-
-5. **Alerts preferences modal:** Task 23 omits the settings UI in the drawer. Add a settings button that opens a modal with min severity selector and muted triggers checkboxes.
-
-### Type Fixes
-
-6. **`InsightDetailDTO.proposedAction`:** Change from `unknown` to the `ProposedAction` type (import from Insight entity) in both `dto.ts` and dashboard `types.ts`. The dashboard type can use a looser union since it crosses the API boundary, but `unknown` loses all type safety.
-
-7. **`insight.generated` emit in RunAnalysisCycle:** Change field names to match the existing `InsightGeneratedMessage` interface: use `insightId`, `recommendation`, `confidence` (this matches the existing interface in Message.ts).
-
-8. **`ComputeFinancials` constructor:** Spec lists `GoalRepository` as a dependency but the implementation only uses `EventStore` (cost data comes from events, not goals). The current implementation is correct — `GoalRepository` is not needed. No fix required.
-
-9. **`ComputeQualityMetrics` constructor:** Same pattern — `TaskRepository` is listed in spec but not needed since all data comes from `KeepDiscardRepository`. No fix required.
-
-10. **`EventStore.findAll` in alertRoutes:** The call `findAll({ types: ["ceo.alert"], limit: 50 })` is valid — `EventQueryOptions` already supports `types` and `limit` fields (see existing `EventStore` port).
-
-11. **`skill_update` snapshot:** In `RunAnalysisCycle.buildProposedAction()`, read current skill content via `this.skillStore.read(pa.skillName)` instead of hardcoding `currentContent: ""`.
+4. **`skill_update` snapshot:** In `RunAnalysisCycle.buildProposedAction()`, read current skill content via `this.skillStore.read(pa.skillName)` instead of hardcoding `currentContent: ""`.
