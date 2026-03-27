@@ -1,27 +1,26 @@
 import type { AgentId, GoalId, TaskId } from "../../../entities/ids"
-import { createEventId } from "../../../entities/ids"
 import type { Message, MessageFilter } from "../../../entities/Message"
 import type { PluginIdentity, Lifecycle, PluginMessageHandler, HealthStatus } from "../../../use-cases/ports/PluginInterfaces"
 import type { MessagePort } from "../../../use-cases/ports/MessagePort"
-import type { EventStore } from "../../../use-cases/ports/EventStore"
 import type { TaskRepository } from "../../../use-cases/ports/TaskRepository"
-import { type KeepDiscardRecord, createKeepDiscardRecord } from "../../../entities/KeepDiscardRecord"
+import type { KeepDiscardRepository } from "../../../use-cases/ports/KeepDiscardRepository"
+import { createKeepDiscardRecord } from "../../../entities/KeepDiscardRecord"
 
 export interface LearnerPluginDeps {
   readonly agentId: AgentId
   readonly bus: MessagePort
-  readonly eventStore: EventStore
   readonly taskRepo: TaskRepository
+  readonly keepDiscardRepo: KeepDiscardRepository
+  readonly onGoalCompleted?: () => Promise<void>
 }
 
 export class LearnerPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
   readonly id: string
   readonly name = "learner-agent"
   readonly version = "1.0.0"
-  readonly description = "Learner agent that records structured events for future analysis"
+  readonly description = "Learner agent that records verdicts and triggers analysis"
 
   private readonly deps: LearnerPluginDeps
-  readonly keepDiscardRecords: KeepDiscardRecord[] = []
 
   constructor(deps: LearnerPluginDeps) {
     this.deps = deps
@@ -38,9 +37,6 @@ export class LearnerPlugin implements PluginIdentity, Lifecycle, PluginMessageHa
         "review.approved",
         "review.rejected",
         "goal.completed",
-        "budget.exceeded",
-        "insight.generated",
-        "ceo.override",
       ],
     }]
   }
@@ -51,8 +47,9 @@ export class LearnerPlugin implements PluginIdentity, Lifecycle, PluginMessageHa
         return this.handleReviewVerdict(message.taskId, "approved", [])
       case "review.rejected":
         return this.handleReviewVerdict(message.taskId, "rejected", [...message.reasons])
-      default:
-        return this.recordSystemEvent(message)
+      case "goal.completed":
+        if (this.deps.onGoalCompleted) await this.deps.onGoalCompleted()
+        return
     }
   }
 
@@ -66,33 +63,19 @@ export class LearnerPlugin implements PluginIdentity, Lifecycle, PluginMessageHa
 
     const record = createKeepDiscardRecord({
       taskId: task.id,
+      goalId: task.goalId,
       agentId: task.assignedTo ?? this.deps.agentId,
       phase: task.phase,
       durationMs: 0,
       tokensUsed: task.tokensUsed,
+      costUsd: 0,
       verdict,
       reasons,
       artifactIds: [...task.artifacts],
       commitHash: null,
+      iteration: task.retryCount + 1,
     })
 
-    this.keepDiscardRecords.push(record)
-  }
-
-  private async recordSystemEvent(message: Message): Promise<void> {
-    const goalId = "goalId" in message ? (message as { goalId: unknown }).goalId as GoalId : null
-    const taskId = "taskId" in message ? (message as { taskId: unknown }).taskId as TaskId : null
-    const agentId = "agentId" in message ? (message as { agentId: unknown }).agentId as AgentId : null
-
-    await this.deps.eventStore.append({
-      id: createEventId(),
-      type: message.type,
-      agentId,
-      taskId,
-      goalId,
-      cost: null,
-      occurredAt: new Date(),
-      payload: message,
-    })
+    await this.deps.keepDiscardRepo.save(record)
   }
 }

@@ -5,6 +5,7 @@ import { InMemoryEventStore } from "../../adapters/storage/InMemoryEventStore"
 import { InMemoryMetricRecorder } from "../../adapters/storage/InMemoryMetricRecorder"
 import { InMemoryArtifactRepo } from "../../adapters/storage/InMemoryArtifactRepo"
 import { InMemoryWorktreeManager } from "../../adapters/storage/InMemoryWorktreeManager"
+import { InMemoryKeepDiscardRepository } from "../../adapters/storage/InMemoryKeepDiscardRepository"
 import { InMemoryBus } from "../../adapters/messaging/InMemoryBus"
 import { NodeFileSystem } from "../../adapters/filesystem/NodeFileSystem"
 import { NodeShellExecutor } from "../../adapters/shell/NodeShellExecutor"
@@ -236,6 +237,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const eventStore = new InMemoryEventStore()
   const metricRecorder = new InMemoryMetricRecorder()
   const artifactRepo = new InMemoryArtifactRepo()
+  const keepDiscardRepo = new InMemoryKeepDiscardRepository()
 
   // -------------------------------------------------------------------------
   // 2. Infrastructure
@@ -452,8 +454,8 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const learnerPlugin = new LearnerPlugin({
     agentId: learnerId,
     bus,
-    eventStore,
     taskRepo,
+    keepDiscardRepo,
   })
 
   // -------------------------------------------------------------------------
