@@ -1,6 +1,7 @@
 "use client"
 import { useEffect, useRef } from "react"
 import { useDashboardStore } from "./store"
+import { useUIStore } from "./ui-store"
 import type { SSEEvent } from "./types"
 
 export function useSSE() {
@@ -11,15 +12,37 @@ export function useSSE() {
   const sourceRef = useRef<EventSource | null>(null)
 
   useEffect(() => {
+    useUIStore.getState().setConnectionState("reconnecting")
     const source = new EventSource("/api/events/stream")
     sourceRef.current = source
+
+    source.onopen = () => {
+      useUIStore.getState().setConnectionState("connected")
+    }
+
     source.onmessage = (event) => {
       const data = JSON.parse(event.data) as SSEEvent
       handleSSEEvent(data)
-      const refreshTypes = new Set(["goal.created", "goal.completed", "goal.abandoned", "task.created", "task.assigned", "task.completed", "task.failed", "review.approved", "review.rejected", "branch.merged", "branch.discarded"])
-      if (refreshTypes.has(data.type)) { void fetchLiveFloor(); void fetchPipeline(); void fetchMetrics() }
+      const refreshTypes = new Set([
+        "goal.created", "goal.completed", "goal.abandoned",
+        "task.created", "task.assigned", "task.completed", "task.failed",
+        "review.approved", "review.rejected",
+        "branch.merged", "branch.discarded",
+      ])
+      if (refreshTypes.has(data.type)) {
+        void fetchLiveFloor()
+        void fetchPipeline()
+        void fetchMetrics()
+      }
     }
-    source.onerror = () => {} // EventSource auto-reconnects
-    return () => { source.close(); sourceRef.current = null }
+
+    source.onerror = () => {
+      useUIStore.getState().setConnectionState("reconnecting")
+    }
+
+    return () => {
+      source.close()
+      sourceRef.current = null
+    }
   }, [handleSSEEvent, fetchLiveFloor, fetchPipeline, fetchMetrics])
 }
