@@ -72,3 +72,68 @@ export interface MetricsSummaryDTO {
   readonly completedTaskCount: number
   readonly agentTokenBreakdown: Record<string, number>
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4 DTOs
+// ---------------------------------------------------------------------------
+import type { ProposedAction } from "../../entities/Insight"
+
+export interface FinancialsDTO {
+  readonly totalTokensUsed: number
+  readonly totalCostUsd: number
+  readonly costPerGoal: ReadonlyArray<{ goalId: string; costUsd: number }>
+  readonly agentTokenBreakdown: Record<string, number>
+  readonly modelTierBreakdown: Record<string, number>
+}
+
+export interface QualityDTO {
+  readonly overallKeepRate: number
+  readonly keepRateByAgent: Record<string, number>
+  readonly reviewPassRate: number
+  readonly topRejectionReasons: ReadonlyArray<{ reason: string; count: number }>
+}
+
+export interface TimingsDTO {
+  readonly avgDurationByPhase: Record<string, number>
+  readonly stalledPhases: ReadonlyArray<{ phase: string; avgMs: number; threshold: number }>
+  readonly agentEfficiency: Record<string, number>
+}
+
+export interface InsightSummaryDTO {
+  readonly id: string
+  readonly title: string
+  readonly actionKind: string
+  readonly status: string
+  readonly createdAt: string
+}
+
+export interface InsightDetailDTO {
+  readonly id: string
+  readonly title: string
+  readonly description: string
+  readonly evidence: string
+  readonly proposedAction: ProposedAction
+  readonly status: string
+  readonly createdAt: string
+  readonly resolvedAt: string | null
+}
+
+export interface CeoAlertDTO {
+  readonly severity: "info" | "warning" | "urgent"
+  readonly title: string
+  readonly body: string
+  readonly goalId: string | null
+  readonly taskId: string | null
+  readonly insightId: string | null
+  readonly timestamp: string
+}
+
+export interface AlertPreferencesDTO {
+  readonly minSeverity: "info" | "warning" | "urgent"
+  readonly mutedTriggers: ReadonlyArray<string>
+}
+
+export interface PluginHealthDTO {
+  readonly name: string
+  readonly status: "healthy" | "degraded" | "unhealthy"
+}

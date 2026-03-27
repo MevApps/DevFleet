@@ -6,11 +6,17 @@ import { InMemoryMetricRecorder } from "../../adapters/storage/InMemoryMetricRec
 import { InMemoryArtifactRepo } from "../../adapters/storage/InMemoryArtifactRepo"
 import { InMemoryWorktreeManager } from "../../adapters/storage/InMemoryWorktreeManager"
 import { InMemoryKeepDiscardRepository } from "../../adapters/storage/InMemoryKeepDiscardRepository"
+import { InMemoryInsightRepository } from "../../adapters/storage/InMemoryInsightRepository"
+import { InMemoryBudgetConfigStore } from "../../adapters/storage/InMemoryBudgetConfigStore"
+import { InMemoryAlertPreferencesStore } from "../../adapters/storage/InMemoryAlertPreferencesStore"
 import { InMemoryBus } from "../../adapters/messaging/InMemoryBus"
 import { NodeFileSystem } from "../../adapters/filesystem/NodeFileSystem"
 import { NodeShellExecutor } from "../../adapters/shell/NodeShellExecutor"
+import { FileSystemAgentPromptStore } from "../../adapters/filesystem/FileSystemAgentPromptStore"
+import { FileSystemSkillStore } from "../../adapters/filesystem/FileSystemSkillStore"
 import { ClaudeProvider } from "../../adapters/ai-providers/ClaudeProvider"
 import { DeterministicProvider } from "../../adapters/ai-providers/DeterministicProvider"
+import { NoOpNotificationAdapter } from "../../adapters/notifications/NoOpNotificationAdapter"
 import { PluginRegistry } from "../../adapters/plugins/PluginRegistry"
 import { SupervisorPlugin } from "../../adapters/plugins/agents/SupervisorPlugin"
 import { ProductPlugin } from "../../adapters/plugins/agents/ProductPlugin"
@@ -34,12 +40,20 @@ import { CreateArtifactUseCase } from "../../use-cases/CreateArtifact"
 import { DetectStuckAgent } from "../../use-cases/DetectStuckAgent"
 import { CreateGoalFromCeo } from "../../use-cases/CreateGoalFromCeo"
 import { PauseAgent } from "../../use-cases/PauseAgent"
+import { ComputeFinancials } from "../../use-cases/ComputeFinancials"
+import { ComputeQualityMetrics } from "../../use-cases/ComputeQualityMetrics"
+import { ComputePhaseTimings } from "../../use-cases/ComputePhaseTimings"
+import { AcceptInsight } from "../../use-cases/AcceptInsight"
+import { DismissInsight } from "../../use-cases/DismissInsight"
+import { EvaluateAlert, type AlertRule } from "../../use-cases/EvaluateAlert"
 import { LiveFloorPresenter } from "../../adapters/presenters/LiveFloorPresenter"
 import { PipelinePresenter } from "../../adapters/presenters/PipelinePresenter"
 import { MetricsPresenter } from "../../adapters/presenters/MetricsPresenter"
 import { SSEManager } from "../http/sseManager"
+import { toSystemEvent } from "./toSystemEvent"
 import type { DashboardDeps } from "../http/createServer"
 import { createAgentId, createProjectId } from "../../entities/ids"
+import { join } from "node:path"
 import { createAgent } from "../../entities/Agent"
 import { ROLES } from "../../entities/AgentRole"
 import { createPipelineConfig } from "../../entities/PipelineConfig"
@@ -238,6 +252,12 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const metricRecorder = new InMemoryMetricRecorder()
   const artifactRepo = new InMemoryArtifactRepo()
   const keepDiscardRepo = new InMemoryKeepDiscardRepository()
+  const insightRepo = new InMemoryInsightRepository()
+  const budgetConfigStore = new InMemoryBudgetConfigStore()
+  const alertPreferencesStore = new InMemoryAlertPreferencesStore()
+  const agentPromptStore = new FileSystemAgentPromptStore(join(config.workspaceDir, "agent-prompts"))
+  const skillStore = new FileSystemSkillStore(join(config.workspaceDir, "skills"))
+  const notificationPort = new NoOpNotificationAdapter()
 
   // -------------------------------------------------------------------------
   // 2. Infrastructure
@@ -271,6 +291,11 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const discardBranch = new DiscardBranch(taskRepo, worktreeManager, bus)
   const createArtifact = new CreateArtifactUseCase(artifactRepo, taskRepo)
   const detectStuckAgent = new DetectStuckAgent(agentRegistry, bus)
+  const computeFinancials = new ComputeFinancials(eventStore)
+  const computeQuality = new ComputeQualityMetrics(keepDiscardRepo)
+  const computeTimings = new ComputePhaseTimings(eventStore, taskRepo)
+  const acceptInsight = new AcceptInsight(insightRepo, agentPromptStore, budgetConfigStore, agentRegistry, skillStore, bus, notificationPort)
+  const dismissInsight = new DismissInsight(insightRepo)
   const agentTimeoutMs = config.agentTimeoutMs ?? 300_000 // 5 min
 
   // -------------------------------------------------------------------------
@@ -488,8 +513,25 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const pauseAgentUseCase = new PauseAgent(agentRegistry, bus)
   const liveFloorPresenter = new LiveFloorPresenter(agentRegistry, taskRepo, eventStore)
   const pipelinePresenter = new PipelinePresenter(taskRepo, goalRepo, DEFAULT_PIPELINE.phases)
-  const metricsPresenter = new MetricsPresenter(taskRepo, eventStore)
+  const metricsPresenter = new MetricsPresenter(taskRepo, computeFinancials)
   const sseManager = new SSEManager(bus)
+
+  // Universal event persistence: persist every bus message as a SystemEvent
+  bus.subscribe({}, async (message) => {
+    await eventStore.append(toSystemEvent(message))
+  })
+
+  // Alert rules: evaluate incoming messages and generate CEO alerts
+  const alertRules: ReadonlyArray<AlertRule> = [
+    { trigger: "goal.completed", severity: "info", evaluate: (msg) => ({ severity: "info", title: "Goal completed", body: "Goal finished", goalId: "goalId" in msg ? (msg as any).goalId : undefined }) },
+    { trigger: "agent.stuck", severity: "warning", evaluate: (msg) => ({ severity: "warning", title: "Agent stuck", body: "Agent stuck after retries", taskId: "taskId" in msg ? (msg as any).taskId : undefined }) },
+    { trigger: "budget.exceeded", severity: "warning", evaluate: (msg) => ({ severity: "warning", title: "Budget exceeded", body: "Task exceeded budget", taskId: "taskId" in msg ? (msg as any).taskId : undefined }) },
+    { trigger: "review.rejected", severity: "urgent", evaluate: (msg) => { if (!("retryCount" in msg) || (msg as any).retryCount < 3) return null; return { severity: "urgent", title: "Rejection loop", body: "Task rejected 3+ times", taskId: "taskId" in msg ? (msg as any).taskId : undefined } } },
+    { trigger: "insight.generated", severity: "info", evaluate: (msg) => ({ severity: "info", title: "New recommendation", body: "Learner has a suggestion", insightId: "insightId" in msg ? (msg as any).insightId : undefined }) },
+    { trigger: "insight.accepted", severity: "info", evaluate: (msg) => ({ severity: "info", title: "Insight applied", body: "title" in msg ? (msg as any).title : "Applied", insightId: "insightId" in msg ? (msg as any).insightId : undefined }) },
+  ]
+  const evaluateAlert = new EvaluateAlert(notificationPort, alertPreferencesStore, bus, alertRules)
+  bus.subscribe({ types: alertRules.map(r => r.trigger) }, (message) => evaluateAlert.execute(message))
 
   const dashboardDeps: DashboardDeps = {
     agentRegistry,
@@ -502,6 +544,14 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     pipeline: pipelinePresenter,
     metrics: metricsPresenter,
     sseManager,
+    pluginRegistry,
+    insightRepo,
+    acceptInsight,
+    dismissInsight,
+    computeFinancials,
+    computeQuality: computeQuality,
+    computeTimings: computeTimings,
+    alertPreferencesStore,
   }
 
   // I2: DetectStuckAgent runs on an interval so stuck agents are caught without polling.
