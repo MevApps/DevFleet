@@ -26,12 +26,14 @@ describe("DecomposeGoal", () => {
 
     const goals: GoalRepository = {
       findById: async () => goal,
+      findAll: async () => [],
       create: async () => undefined,
       update: async (g) => { updatedGoals.push(g) },
     }
     const tasks: TaskRepository = {
       findById: async () => null,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async (t) => { created.push(t) },
       update: async () => undefined,
     }
@@ -59,12 +61,14 @@ describe("DecomposeGoal", () => {
   it("returns failure when goal not found", async () => {
     const goals: GoalRepository = {
       findById: async () => null,
+      findAll: async () => [],
       create: async () => undefined,
       update: async () => undefined,
     }
     const tasks: TaskRepository = {
       findById: async () => null,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async () => undefined,
       update: async () => undefined,
     }
@@ -83,12 +87,14 @@ describe("DecomposeGoal", () => {
     const goal = makeGoal("completed")
     const goals: GoalRepository = {
       findById: async () => goal,
+      findAll: async () => [],
       create: async () => undefined,
       update: async () => undefined,
     }
     const tasks: TaskRepository = {
       findById: async () => null,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async () => undefined,
       update: async () => undefined,
     }

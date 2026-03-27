@@ -20,6 +20,10 @@ export class InMemoryTaskRepo implements TaskRepository {
     return results
   }
 
+  async findAll(): Promise<ReadonlyArray<Task>> {
+    return Array.from(this.store.values())
+  }
+
   async create(task: Task): Promise<void> {
     this.store.set(task.id, task)
   }

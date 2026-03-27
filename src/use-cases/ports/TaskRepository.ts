@@ -11,6 +11,7 @@ export class VersionConflictError extends Error {
 export interface TaskRepository {
   findById(id: TaskId): Promise<Task | null>
   findByGoalId(goalId: GoalId): Promise<ReadonlyArray<Task>>
+  findAll(): Promise<ReadonlyArray<Task>>
   create(task: Task): Promise<void>
   update(task: Task): Promise<void>
 }

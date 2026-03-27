@@ -28,11 +28,13 @@ describe("RecordTurnMetrics", () => {
       record: async (m) => { recorded.push(m) },
       findByTaskId: async () => [],
       findByAgentId: async () => [],
+      findAll: async () => [],
     }
 
     const tasks: TaskRepository = {
       findById: async () => task,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async () => undefined,
       update: async (t) => { updated.push(t) },
     }
@@ -61,10 +63,12 @@ describe("RecordTurnMetrics", () => {
       record: async () => undefined,
       findByTaskId: async () => [],
       findByAgentId: async () => [],
+      findAll: async () => [],
     }
     const tasks: TaskRepository = {
       findById: async () => null,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async () => undefined,
       update: async () => undefined,
     }
@@ -83,10 +87,12 @@ describe("RecordTurnMetrics", () => {
       record: async (m) => { recorded.push(m) },
       findByTaskId: async () => [],
       findByAgentId: async () => [],
+      findAll: async () => [],
     }
     const tasks: TaskRepository = {
       findById: async () => task,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async () => undefined,
       update: async () => undefined,
     }

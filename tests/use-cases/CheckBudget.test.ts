@@ -21,6 +21,7 @@ describe("CheckBudget", () => {
     const repo: TaskRepository = {
       findById: async () => task,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async () => undefined,
       update: async () => undefined,
     }
@@ -39,6 +40,7 @@ describe("CheckBudget", () => {
     const repo: TaskRepository = {
       findById: async () => task,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async () => undefined,
       update: async () => undefined,
     }
@@ -55,6 +57,7 @@ describe("CheckBudget", () => {
     const repo: TaskRepository = {
       findById: async () => null,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async () => undefined,
       update: async () => undefined,
     }
@@ -71,6 +74,7 @@ describe("CheckBudget", () => {
     const repo: TaskRepository = {
       findById: async () => task,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async () => undefined,
       update: async () => undefined,
     }

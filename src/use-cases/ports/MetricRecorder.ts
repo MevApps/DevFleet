@@ -5,4 +5,5 @@ export interface MetricRecorder {
   record(metric: Metric): Promise<void>
   findByTaskId(taskId: TaskId): Promise<ReadonlyArray<Metric>>
   findByAgentId(agentId: AgentId): Promise<ReadonlyArray<Metric>>
+  findAll(): Promise<ReadonlyArray<Metric>>
 }

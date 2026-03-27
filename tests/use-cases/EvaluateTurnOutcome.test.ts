@@ -26,6 +26,7 @@ const noOpBus: MessagePort = {
 const makeTaskRepo = (task: ReturnType<typeof createTask>): TaskRepository => ({
   findById: async () => task,
   findByGoalId: async () => [],
+  findAll: async () => [],
   create: async () => undefined,
   update: async () => undefined,
 })
@@ -103,6 +104,7 @@ describe("EvaluateTurnOutcome", () => {
     const tasks: TaskRepository = {
       findById: async () => null,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async () => undefined,
       update: async () => undefined,
     }

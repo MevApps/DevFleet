@@ -73,6 +73,7 @@ function makeMocks(opts: {
   const tasks: TaskRepository = {
     findById: jest.fn().mockResolvedValue(task),
     findByGoalId: jest.fn().mockResolvedValue([]),
+    findAll: jest.fn().mockResolvedValue([]),
     create: jest.fn().mockResolvedValue(undefined),
     update: jest.fn().mockResolvedValue(undefined),
   }
@@ -146,6 +147,7 @@ describe("RunAgentLoop", () => {
     const tasks: TaskRepository = {
       findById: jest.fn().mockResolvedValue(task),
       findByGoalId: jest.fn().mockResolvedValue([]),
+      findAll: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue(undefined),
       update: jest.fn().mockResolvedValue(undefined),
     }
@@ -188,6 +190,7 @@ describe("RunAgentLoop", () => {
     const tasks: TaskRepository = {
       findById: jest.fn().mockResolvedValue(task),
       findByGoalId: jest.fn().mockResolvedValue([]),
+      findAll: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue(undefined),
       update: jest.fn().mockResolvedValue(undefined),
     }
@@ -229,6 +232,7 @@ describe("RunAgentLoop", () => {
     const tasks: TaskRepository = {
       findById: jest.fn().mockResolvedValue(task),
       findByGoalId: jest.fn().mockResolvedValue([]),
+      findAll: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue(undefined),
       update: jest.fn().mockResolvedValue(undefined),
     }

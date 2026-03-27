@@ -71,4 +71,19 @@ describe("InMemoryGoalRepo", () => {
       expect(found?.status).toBe("completed")
     })
   })
+
+  describe("findAll", () => {
+    it("returns empty array when no goals exist", async () => {
+      expect(await repo.findAll()).toEqual([])
+    })
+    it("returns all goals", async () => {
+      const g1 = makeGoal({ id: createGoalId("g1"), description: "A" })
+      const g2 = makeGoal({ id: createGoalId("g2"), description: "B" })
+      await repo.create(g1)
+      await repo.create(g2)
+      const all = await repo.findAll()
+      expect(all).toHaveLength(2)
+      expect(all.map(g => g.id)).toEqual(expect.arrayContaining(["g1", "g2"]))
+    })
+  })
 })

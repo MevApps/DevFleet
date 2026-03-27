@@ -39,6 +39,7 @@ describe("AssignTask", () => {
     const tasks: TaskRepository = {
       findById: async () => task,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async () => undefined,
       update: async (t) => { updated.push(t) },
     }
@@ -71,6 +72,7 @@ describe("AssignTask", () => {
     const tasks: TaskRepository = {
       findById: async () => null,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async () => undefined,
       update: async () => undefined,
     }
@@ -97,6 +99,7 @@ describe("AssignTask", () => {
     const tasks: TaskRepository = {
       findById: async () => task,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async () => undefined,
       update: async () => undefined,
     }
@@ -123,6 +126,7 @@ describe("AssignTask", () => {
     const tasks: TaskRepository = {
       findById: async () => task,
       findByGoalId: async () => [],
+      findAll: async () => [],
       create: async () => undefined,
       update: async () => undefined,
     }

@@ -9,6 +9,10 @@ export class InMemoryGoalRepo implements GoalRepository {
     return this.store.get(id) ?? null
   }
 
+  async findAll(): Promise<ReadonlyArray<Goal>> {
+    return Array.from(this.store.values())
+  }
+
   async create(goal: Goal): Promise<void> {
     this.store.set(goal.id, goal)
   }

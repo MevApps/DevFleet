@@ -16,4 +16,8 @@ export class InMemoryMetricRecorder implements MetricRecorder {
   async findByAgentId(agentId: AgentId): Promise<ReadonlyArray<Metric>> {
     return this.metrics.filter(m => m.agentId === agentId)
   }
+
+  async findAll(): Promise<ReadonlyArray<Metric>> {
+    return [...this.metrics]
+  }
 }
