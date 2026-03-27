@@ -1,0 +1,44 @@
+import type { GoalRepository } from "./ports/GoalRepository"
+import type { MessagePort } from "./ports/MessagePort"
+import type { Goal } from "../entities/Goal"
+import { createGoal } from "../entities/Goal"
+import { createGoalId, createMessageId } from "../entities/ids"
+import { createBudget } from "../entities/Budget"
+import { success, failure, type Result } from "./Result"
+
+export interface CreateGoalInput {
+  readonly description: string
+  readonly maxTokens: number
+  readonly maxCostUsd: number
+}
+
+export class CreateGoalFromCeo {
+  constructor(
+    private readonly goals: GoalRepository,
+    private readonly bus: MessagePort,
+  ) {}
+
+  async execute(input: CreateGoalInput): Promise<Result<Goal>> {
+    const description = input.description.trim()
+    if (!description) return failure("Goal description must not be empty")
+    if (input.maxTokens <= 0 || input.maxCostUsd <= 0) return failure("Budget must be greater than zero")
+
+    const goal = createGoal({
+      id: createGoalId(),
+      description,
+      totalBudget: createBudget({ maxTokens: input.maxTokens, maxCostUsd: input.maxCostUsd }),
+      status: "active",
+    })
+
+    await this.goals.create(goal)
+    await this.bus.emit({
+      id: createMessageId(),
+      type: "goal.created",
+      goalId: goal.id,
+      description: goal.description,
+      timestamp: new Date(),
+    })
+
+    return success(goal)
+  }
+}
