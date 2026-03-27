@@ -187,7 +187,8 @@ interface SkillUpdatedMessage extends BaseMessage {
 interface InsightGeneratedMessage extends BaseMessage {
   readonly type: "insight.generated"
   readonly insightId: string
-  readonly recommendation: string
+  readonly actionKind: string
+  readonly title: string
   readonly confidence: number
 }
 
@@ -224,6 +225,41 @@ interface AgentResumedMessage extends BaseMessage {
   readonly agentId: AgentId
 }
 
+interface InsightAcceptedMessage extends BaseMessage {
+  readonly type: "insight.accepted"
+  readonly insightId: string
+  readonly actionKind: string
+  readonly title: string
+}
+
+interface InsightDismissedMessage extends BaseMessage {
+  readonly type: "insight.dismissed"
+  readonly insightId: string
+}
+
+interface BudgetUpdatedMessage extends BaseMessage {
+  readonly type: "budget.updated"
+  readonly role: string
+  readonly maxTokens: number
+  readonly maxCostUsd: number
+}
+
+interface ModelUpdatedMessage extends BaseMessage {
+  readonly type: "model.updated"
+  readonly role: string
+  readonly newModel: string
+}
+
+interface CeoAlertMessage extends BaseMessage {
+  readonly type: "ceo.alert"
+  readonly severity: "info" | "warning" | "urgent"
+  readonly title: string
+  readonly body: string
+  readonly goalId?: GoalId
+  readonly taskId?: TaskId
+  readonly insightId?: string
+}
+
 // ---------------------------------------------------------------------------
 // Union + utilities
 // ---------------------------------------------------------------------------
@@ -256,6 +292,11 @@ export type Message =
   | AgentStuckMessage
   | AgentPausedMessage
   | AgentResumedMessage
+  | InsightAcceptedMessage
+  | InsightDismissedMessage
+  | BudgetUpdatedMessage
+  | ModelUpdatedMessage
+  | CeoAlertMessage
 
 export type MessageType = Message["type"]
 
