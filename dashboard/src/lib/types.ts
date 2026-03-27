@@ -8,3 +8,13 @@ export interface LiveFloorData { readonly agents: readonly AgentDTO[]; readonly 
 export interface PipelineData { readonly phases: readonly string[]; readonly tasksByPhase: Record<string, readonly TaskDTO[]>; readonly goals: readonly GoalDTO[] }
 export interface MetricsSummary { readonly totalTokensUsed: number; readonly totalCostUsd: number; readonly activeTaskCount: number; readonly completedTaskCount: number; readonly agentTokenBreakdown: Record<string, number> }
 export interface SSEEvent { readonly id: string; readonly type: string; readonly timestamp: string; readonly goalId?: string; readonly taskId?: string; readonly agentId?: string; readonly description?: string; readonly reason?: string; readonly branch?: string }
+
+// Phase 4 types
+export interface FinancialsData { readonly totalTokensUsed: number; readonly totalCostUsd: number; readonly costPerGoal: ReadonlyArray<{ goalId: string; costUsd: number }>; readonly agentTokenBreakdown: Record<string, number>; readonly modelTierBreakdown: Record<string, number> }
+export interface QualityData { readonly overallKeepRate: number; readonly keepRateByAgent: Record<string, number>; readonly reviewPassRate: number; readonly topRejectionReasons: ReadonlyArray<{ reason: string; count: number }> }
+export interface TimingsData { readonly avgDurationByPhase: Record<string, number>; readonly stalledPhases: ReadonlyArray<{ phase: string; avgMs: number; threshold: number }>; readonly agentEfficiency: Record<string, number> }
+export interface InsightSummary { readonly id: string; readonly title: string; readonly actionKind: string; readonly status: string; readonly createdAt: string }
+export interface InsightDetail { readonly id: string; readonly title: string; readonly description: string; readonly evidence: string; readonly proposedAction: unknown; readonly status: string; readonly createdAt: string; readonly resolvedAt: string | null }
+export interface CeoAlertData { readonly severity: "info" | "warning" | "urgent"; readonly title: string; readonly body: string; readonly goalId: string | null; readonly taskId: string | null; readonly insightId: string | null; readonly timestamp: string }
+export interface AlertPreferencesData { readonly minSeverity: "info" | "warning" | "urgent"; readonly mutedTriggers: string[] }
+export interface PluginHealth { readonly name: string; readonly status: "healthy" | "degraded" | "unhealthy" }
