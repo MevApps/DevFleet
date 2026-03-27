@@ -172,20 +172,26 @@ class RunAnalysisCycle {
     private readonly insightRepo: InsightRepository,
     private readonly notificationPort: NotificationPort,
     private readonly bus: MessagePort,
+    // Read current state for AI context + ProposedAction snapshots:
+    private readonly promptStore: AgentPromptStore,
+    private readonly budgetConfigStore: BudgetConfigStore,
+    private readonly agentRegistry: AgentRegistry,
+    private readonly skillStore: SkillStore,
   ) {}
 
   async execute(): Promise<void> {
-    // 1. Gather — call all three compute use cases
-    // 2. Format — serialize context as structured JSON
-    // 3. Reason — call AI with system prompt + context
-    // 4. Parse — extract ProposedAction objects, strict validation against union schema
-    // 5. Create — save Insight entities with status "pending" via InsightRepository
-    // 6. Notify — emit insight.generated through bus, push CeoAlert for high-confidence insights
+    // 1. Gather metrics — call all three compute use cases
+    // 2. Gather current state — read prompts, budgets, models, skills via ports
+    // 3. Format — serialize metrics AND current state as structured JSON context
+    // 4. Reason — AI sees data AND current config, outputs full ProposedActions
+    // 5. Snapshot — populate currentContent fields from step 2 readings
+    // 6. Create — save Insight entities with status "pending" via InsightRepository
+    // 7. Notify — emit insight.generated through bus, push CeoAlert for high-confidence insights
   }
 }
 ```
 
-Nine dependencies. Each used for exactly one purpose. System prompt and model injected at construction time, not per-call. The three compute use cases provide all the data — no reaching around them.
+Thirteen dependencies. High count, but each serves exactly one purpose: three provide metrics, four provide current state for AI context and ProposedAction snapshots, one provides AI, one saves output, one notifies, one broadcasts, and two are config. This is an orchestrator — orchestrators coordinate many things.
 
 ### 2.6 NotificationPort
 
@@ -490,6 +496,20 @@ bus.subscribe({}, async (message) => {
 Helper function `toSystemEvent(message: Message): SystemEvent` extracts `agentId`, `taskId`, `goalId`, and `cost` from message payloads.
 
 Remove `recordSystemEvent()` from LearnerPlugin. Remove `eventStore` from `LearnerPluginDeps`. Every message type — existing and future — is automatically persisted. No manual subscription lists.
+
+**LearnerPlugin updated subscriptions:** Drop `budget.exceeded`, `insight.generated`, `ceo.override` — the Learner no longer records arbitrary events (the universal subscriber handles that) and must not subscribe to `insight.generated` (its own output — would cause a self-triggering loop). Phase 4 subscriptions:
+
+```typescript
+subscriptions(): ReadonlyArray<MessageFilter> {
+  return [{
+    types: [
+      "review.approved",    // → write KeepDiscardRecord
+      "review.rejected",    // → write KeepDiscardRecord
+      "goal.completed",     // → trigger RunAnalysisCycle
+    ],
+  }]
+}
+```
 
 ### 4.2 Alert Rules Engine
 
@@ -884,6 +904,8 @@ Summary of all wiring changes in `src/infrastructure/config/composition-root.ts`
 ### New Files — Layer 1 (Entities)
 - `src/entities/Insight.ts` — Insight entity + ProposedAction union
 - `src/entities/AlertPreferences.ts` — Alert preferences entity
+- `src/entities/MetricsFilter.ts` — Shared filter type used by compute use cases and API routes
+- `src/entities/Reports.ts` — FinancialsReport, QualityReport, TimingsReport value objects
 
 ### New Files — Layer 2 (Use Cases / Ports)
 - `src/use-cases/ports/KeepDiscardRepository.ts`
@@ -909,6 +931,9 @@ Summary of all wiring changes in `src/infrastructure/config/composition-root.ts`
 - `src/adapters/filesystem/FileSystemAgentPromptStore.ts`
 - `src/adapters/filesystem/FileSystemSkillStore.ts`
 - `src/adapters/notifications/NoOpNotificationAdapter.ts`
+
+### New Files — Layer 4 (Infrastructure)
+- `src/infrastructure/config/toSystemEvent.ts` — Helper to convert Message → SystemEvent for universal event persistence
 
 ### New Files — Layer 3 (HTTP Routes)
 - `src/infrastructure/http/routes/insightRoutes.ts`
