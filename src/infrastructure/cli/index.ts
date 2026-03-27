@@ -1,5 +1,7 @@
 import * as readline from "node:readline"
+import * as http from "node:http"
 import { buildSystem } from "../config/composition-root"
+import { createServer } from "../http/createServer"
 import { createGoal } from "../../entities/Goal"
 import { createGoalId, createMessageId } from "../../entities/ids"
 import { createBudget } from "../../entities/Budget"
@@ -17,8 +19,8 @@ function logProgress(icon: string, message: string): void {
 }
 
 async function main(): Promise<void> {
-  console.log("DevFleet CLI — Phase 2 Full Agent Team")
-  console.log("=======================================")
+  console.log("DevFleet CLI — Phase 3 Dashboard + Real-Time")
+  console.log("============================================")
 
   if (!API_KEY) {
     console.log("(No ANTHROPIC_API_KEY set — using mock AI providers)")
@@ -35,6 +37,16 @@ async function main(): Promise<void> {
   })
 
   await system.start()
+
+  // ---------------------------------------------------------------------------
+  // HTTP API server
+  // ---------------------------------------------------------------------------
+  const httpPort = parseInt(process.env["HTTP_PORT"] ?? "3100", 10)
+  const app = createServer(system.dashboardDeps)
+  const server = http.createServer(app)
+  server.listen(httpPort, () => {
+    console.log(`HTTP API listening on http://localhost:${httpPort}`)
+  })
 
   // ---------------------------------------------------------------------------
   // Subscribe to key messages and print progress
@@ -176,6 +188,7 @@ async function main(): Promise<void> {
     }
   } finally {
     rl.close()
+    server.close()
     await system.stop()
   }
 }

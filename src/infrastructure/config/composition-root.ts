@@ -31,6 +31,13 @@ import { MergeBranch } from "../../use-cases/MergeBranch"
 import { DiscardBranch } from "../../use-cases/DiscardBranch"
 import { CreateArtifactUseCase } from "../../use-cases/CreateArtifact"
 import { DetectStuckAgent } from "../../use-cases/DetectStuckAgent"
+import { CreateGoalFromCeo } from "../../use-cases/CreateGoalFromCeo"
+import { PauseAgent } from "../../use-cases/PauseAgent"
+import { LiveFloorPresenter } from "../../adapters/presenters/LiveFloorPresenter"
+import { PipelinePresenter } from "../../adapters/presenters/PipelinePresenter"
+import { MetricsPresenter } from "../../adapters/presenters/MetricsPresenter"
+import { SSEManager } from "../http/sseManager"
+import type { DashboardDeps } from "../http/createServer"
 import { createAgentId, createProjectId } from "../../entities/ids"
 import { createAgent } from "../../entities/Agent"
 import { ROLES } from "../../entities/AgentRole"
@@ -85,6 +92,7 @@ export interface DevFleetSystem {
   readonly bus: MessagePort
   readonly pluginRegistry: PluginRegistry
   readonly pipelineTimeoutMs: number
+  readonly dashboardDeps: DashboardDeps
   start(): Promise<void>
   stop(): Promise<void>
 }
@@ -471,6 +479,29 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     })
   }
 
+  // -------------------------------------------------------------------------
+  // 10. Dashboard dependencies (Phase 3 HTTP API layer)
+  // -------------------------------------------------------------------------
+  const createGoalFromCeo = new CreateGoalFromCeo(goalRepo, bus)
+  const pauseAgentUseCase = new PauseAgent(agentRegistry, bus)
+  const liveFloorPresenter = new LiveFloorPresenter(agentRegistry, taskRepo, eventStore)
+  const pipelinePresenter = new PipelinePresenter(taskRepo, goalRepo, DEFAULT_PIPELINE.phases)
+  const metricsPresenter = new MetricsPresenter(taskRepo, eventStore)
+  const sseManager = new SSEManager(bus)
+
+  const dashboardDeps: DashboardDeps = {
+    agentRegistry,
+    goalRepo,
+    taskRepo,
+    eventStore,
+    createGoal: createGoalFromCeo,
+    pauseAgent: pauseAgentUseCase,
+    liveFloor: liveFloorPresenter,
+    pipeline: pipelinePresenter,
+    metrics: metricsPresenter,
+    sseManager,
+  }
+
   // I2: DetectStuckAgent runs on an interval so stuck agents are caught without polling.
   // The handle is captured so stop() can cancel it cleanly.
   let stuckAgentInterval: ReturnType<typeof setInterval> | null = null
@@ -485,6 +516,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     bus,
     pluginRegistry,
     pipelineTimeoutMs,
+    dashboardDeps,
     start: async () => {
       await pluginRegistry.startAll()
       stuckAgentInterval = setInterval(
@@ -497,6 +529,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
         clearInterval(stuckAgentInterval)
         stuckAgentInterval = null
       }
+      sseManager.shutdown()
       await pluginRegistry.stopAll()
     },
   }
