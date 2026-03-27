@@ -25,6 +25,7 @@
 
 | Action | Path | Purpose |
 |--------|------|---------|
+| Modify | `src/infrastructure/config/composition-root.ts` | Refactor DevFleetSystem to expose port interfaces, not concrete types |
 | Modify | `src/use-cases/ports/EventStore.ts` | Add `findAll`, `findRecent`, `countAll` query methods |
 | Modify | `src/use-cases/ports/GoalRepository.ts` | Add `findAll` |
 | Modify | `src/use-cases/ports/TaskRepository.ts` | Add `findAll` |
@@ -54,7 +55,7 @@
 | Create | `src/infrastructure/http/routes/taskRoutes.ts` | GET /api/tasks, GET /api/tasks/:id |
 | Create | `src/infrastructure/http/routes/eventRoutes.ts` | GET /api/events/stream (SSE), GET /api/events |
 | Create | `src/infrastructure/http/routes/metricsRoutes.ts` | GET /api/metrics |
-| Modify | `src/infrastructure/config/composition-root.ts` | Expose presenters + new use cases on DevFleetSystem |
+| Modify | `src/infrastructure/config/composition-root.ts` | Create presenters + use cases, pass to createServer via DashboardDeps |
 | Modify | `src/infrastructure/cli/index.ts` | Start HTTP server alongside agent system |
 
 ### Batch 3: Dashboard Shell
@@ -99,6 +100,62 @@
 ---
 
 ## Batch 1: Backend Foundation
+
+### Task 0: Refactor DevFleetSystem to expose port interfaces (fix Phase 2 DIP debt)
+
+**Files:**
+- Modify: `src/infrastructure/config/composition-root.ts`
+
+The current `DevFleetSystem` interface exposes concrete types (`InMemoryTaskRepo`, `InMemoryGoalRepo`, etc.). Every consumer now depends on in-memory implementations. When we swap to PostgreSQL, every consumer breaks. Fix: expose port interfaces only.
+
+- [ ] **Step 1: Change DevFleetSystem to use port interfaces**
+
+Replace the `DevFleetSystem` interface in `src/infrastructure/config/composition-root.ts`:
+
+```typescript
+// Before (concrete types — DIP violation):
+// export interface DevFleetSystem {
+//   readonly taskRepo: InMemoryTaskRepo
+//   readonly goalRepo: InMemoryGoalRepo
+//   ...
+
+// After (port interfaces — dependency rule respected):
+import type { TaskRepository } from "../../use-cases/ports/TaskRepository"
+import type { GoalRepository } from "../../use-cases/ports/GoalRepository"
+import type { AgentRegistry } from "../../use-cases/ports/AgentRegistry"
+import type { EventStore } from "../../use-cases/ports/EventStore"
+import type { MetricRecorder } from "../../use-cases/ports/MetricRecorder"
+import type { ArtifactRepository } from "../../use-cases/ports/ArtifactRepository"
+import type { MessagePort } from "../../use-cases/ports/MessagePort"
+
+export interface DevFleetSystem {
+  readonly taskRepo: TaskRepository
+  readonly goalRepo: GoalRepository
+  readonly agentRegistry: AgentRegistry
+  readonly eventStore: EventStore
+  readonly metricRecorder: MetricRecorder
+  readonly artifactRepo: ArtifactRepository
+  readonly bus: MessagePort
+  readonly pluginRegistry: PluginRegistry
+  readonly pipelineTimeoutMs: number
+  start(): Promise<void>
+  stop(): Promise<void>
+}
+```
+
+- [ ] **Step 2: Run full test suite to verify no regressions**
+
+Run: `npx tsc --noEmit && npx jest --no-coverage`
+Expected: All pass. Tests that use `system.taskRepo.create(...)` etc. still work because the in-memory implementations satisfy the port interfaces. If any test accesses a method that only exists on the concrete class (not on the port), that test needs updating — this is the DIP violation surfacing.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/infrastructure/config/composition-root.ts
+git commit -m "refactor(phase3): DevFleetSystem exposes port interfaces, not concrete types"
+```
+
+---
 
 ### Task 1: Extend EventStore port with dashboard query methods
 
@@ -619,13 +676,42 @@ git commit -m "feat(phase3): add CreateGoalFromCeo use case"
 
 ---
 
-### Task 4: PauseAgent use case
+### Task 4: Add `agent.paused` message type + PauseAgent use case
 
 **Files:**
+- Modify: `src/entities/Message.ts`
 - Create: `src/use-cases/PauseAgent.ts`
 - Test: `tests/use-cases/PauseAgent.test.ts`
 
-- [ ] **Step 1: Write failing test**
+The `CeoOverrideMessage` requires a `taskId`, but pausing an agent isn't necessarily task-scoped. Instead of fabricating a fake `TaskId("no-task")` — which is a lie in the data — we add a proper `agent.paused` message type that doesn't require a `taskId`.
+
+- [ ] **Step 1: Add AgentPausedMessage to Message union**
+
+Add to `src/entities/Message.ts`, in the "Control / scheduling" section:
+
+```typescript
+interface AgentPausedMessage extends BaseMessage {
+  readonly type: "agent.paused"
+  readonly agentId: AgentId
+  readonly reason: string
+}
+
+interface AgentResumedMessage extends BaseMessage {
+  readonly type: "agent.resumed"
+  readonly agentId: AgentId
+}
+```
+
+Add both to the `Message` union type:
+
+```typescript
+export type Message =
+  // ... existing types ...
+  | AgentPausedMessage
+  | AgentResumedMessage
+```
+
+- [ ] **Step 2: Write failing test for PauseAgent**
 
 ```typescript
 // tests/use-cases/PauseAgent.test.ts
@@ -663,23 +749,31 @@ describe("PauseAgent", () => {
     expect(agent!.status).toBe("paused")
   })
 
-  it("emits ceo.override message on pause", async () => {
+  it("emits agent.paused message (not ceo.override with fake taskId)", async () => {
     const emitted: Message[] = []
     bus.subscribe({}, async (msg) => { emitted.push(msg) })
 
     await useCase.execute(createAgentId("dev-1"), "Testing pause")
 
-    const override = emitted.find(m => m.type === "ceo.override")
-    expect(override).toBeDefined()
+    const paused = emitted.find(m => m.type === "agent.paused")
+    expect(paused).toBeDefined()
+    if (paused && paused.type === "agent.paused") {
+      expect(paused.agentId).toBe("dev-1")
+      expect(paused.reason).toBe("Testing pause")
+    }
   })
 
-  it("resumes a paused agent", async () => {
+  it("resumes a paused agent and emits agent.resumed", async () => {
+    const emitted: Message[] = []
+    bus.subscribe({}, async (msg) => { emitted.push(msg) })
+
     await useCase.execute(createAgentId("dev-1"), "pause")
     const result = await useCase.resume(createAgentId("dev-1"))
 
     expect(result.ok).toBe(true)
     const agent = await registry.findById(createAgentId("dev-1"))
     expect(agent!.status).toBe("idle")
+    expect(emitted.some(m => m.type === "agent.resumed")).toBe(true)
   })
 
   it("fails when agent not found", async () => {
@@ -689,19 +783,19 @@ describe("PauseAgent", () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 3: Run test to verify it fails**
 
 Run: `npx jest tests/use-cases/PauseAgent.test.ts --no-coverage`
 Expected: FAIL — module not found
 
-- [ ] **Step 3: Implement PauseAgent**
+- [ ] **Step 4: Implement PauseAgent**
 
 ```typescript
 // src/use-cases/PauseAgent.ts
 import type { AgentRegistry } from "./ports/AgentRegistry"
 import type { MessagePort } from "./ports/MessagePort"
 import type { AgentId } from "../entities/ids"
-import { createMessageId, createTaskId } from "../entities/ids"
+import { createMessageId } from "../entities/ids"
 import { success, failure, type Result } from "./Result"
 
 export class PauseAgent {
@@ -720,9 +814,8 @@ export class PauseAgent {
 
     await this.bus.emit({
       id: createMessageId(),
-      type: "ceo.override",
-      taskId: agent.currentTaskId ?? createTaskId("no-task"),
-      action: "pause",
+      type: "agent.paused",
+      agentId,
       reason,
       timestamp: new Date(),
     })
@@ -741,6 +834,13 @@ export class PauseAgent {
     }
 
     await this.agents.updateStatus(agentId, "idle")
+
+    await this.bus.emit({
+      id: createMessageId(),
+      type: "agent.resumed",
+      agentId,
+      timestamp: new Date(),
+    })
 
     return success(undefined)
   }
@@ -1563,6 +1663,8 @@ Expected: FAIL — module not found
 
 - [ ] **Step 3: Implement SSEManager**
 
+The SSEManager serializes the full message — no fragile `extractFields` with runtime `in` checks. It includes `message.id` so the dashboard never needs to fabricate event identifiers.
+
 ```typescript
 // src/infrastructure/http/sseManager.ts
 import type { Response } from "express"
@@ -1603,26 +1705,19 @@ export class SSEManager {
   }
 
   private broadcast(message: Message): void {
-    const data = JSON.stringify({
-      type: message.type,
+    // Serialize the FULL typed message. The discriminated union carries all fields —
+    // no manual field extraction needed. Includes message.id so the dashboard
+    // never fabricates identifiers.
+    const payload = {
+      ...message,
       timestamp: message.timestamp.toISOString(),
-      ...this.extractFields(message),
-    })
+    }
+
+    const data = JSON.stringify(payload)
 
     for (const client of this.clients) {
       client.write(`data:${data}\n\n`)
     }
-  }
-
-  private extractFields(message: Message): Record<string, unknown> {
-    const fields: Record<string, unknown> = {}
-    if ("goalId" in message) fields["goalId"] = message.goalId
-    if ("taskId" in message) fields["taskId"] = message.taskId
-    if ("agentId" in message) fields["agentId"] = message.agentId
-    if ("description" in message) fields["description"] = message.description
-    if ("reason" in message) fields["reason"] = message.reason
-    if ("branch" in message) fields["branch"] = message.branch
-    return fields
   }
 }
 ```
@@ -1671,7 +1766,7 @@ describe("API routes", () => {
 
   beforeEach(async () => {
     system = await buildSystem({ workspaceDir: "/tmp/test" })
-    app = createServer(system)
+    app = createServer(system.dashboardDeps)
     await system.start()
   })
 
@@ -1785,6 +1880,8 @@ Expected: FAIL — module not found
 
 - [ ] **Step 4: Implement route modules**
 
+All route handlers use try/catch to prevent unhandled promise rejections and ensure structured error responses at the system boundary.
+
 ```typescript
 // src/infrastructure/http/routes/agentRoutes.ts
 import { Router } from "express"
@@ -1796,30 +1893,36 @@ import type { AgentId } from "../../../entities/ids"
 export function agentRoutes(agents: AgentRegistry, pauseAgent: PauseAgent): Router {
   const router = Router()
 
-  router.get("/", async (_req, res) => {
-    const all = await agents.findAll()
-    res.json({ agents: all.map(toAgentDTO) })
+  router.get("/", async (_req, res, next) => {
+    try {
+      const all = await agents.findAll()
+      res.json({ agents: all.map(toAgentDTO) })
+    } catch (err) { next(err) }
   })
 
-  router.post("/:id/pause", async (req, res) => {
-    const result = await pauseAgent.execute(
-      req.params["id"] as AgentId,
-      (req.body as { reason?: string }).reason ?? "CEO pause",
-    )
-    if (!result.ok) {
-      res.status(404).json({ error: result.error })
-      return
-    }
-    res.json({ status: "paused" })
+  router.post("/:id/pause", async (req, res, next) => {
+    try {
+      const result = await pauseAgent.execute(
+        req.params["id"] as AgentId,
+        (req.body as { reason?: string }).reason ?? "CEO pause",
+      )
+      if (!result.ok) {
+        res.status(404).json({ error: result.error })
+        return
+      }
+      res.json({ status: "paused" })
+    } catch (err) { next(err) }
   })
 
-  router.post("/:id/resume", async (req, res) => {
-    const result = await pauseAgent.resume(req.params["id"] as AgentId)
-    if (!result.ok) {
-      res.status(400).json({ error: result.error })
-      return
-    }
-    res.json({ status: "resumed" })
+  router.post("/:id/resume", async (req, res, next) => {
+    try {
+      const result = await pauseAgent.resume(req.params["id"] as AgentId)
+      if (!result.ok) {
+        res.status(400).json({ error: result.error })
+        return
+      }
+      res.json({ status: "resumed" })
+    } catch (err) { next(err) }
   })
 
   return router
@@ -1836,25 +1939,29 @@ import { toGoalDTO } from "../../../adapters/presenters/mappers"
 export function goalRoutes(goals: GoalRepository, createGoal: CreateGoalFromCeo): Router {
   const router = Router()
 
-  router.get("/", async (_req, res) => {
-    const all = await goals.findAll()
-    res.json({ goals: all.map(toGoalDTO) })
+  router.get("/", async (_req, res, next) => {
+    try {
+      const all = await goals.findAll()
+      res.json({ goals: all.map(toGoalDTO) })
+    } catch (err) { next(err) }
   })
 
-  router.post("/", async (req, res) => {
-    const body = req.body as { description?: string; maxTokens?: number; maxCostUsd?: number }
-    const result = await createGoal.execute({
-      description: body.description ?? "",
-      maxTokens: body.maxTokens ?? 100_000,
-      maxCostUsd: body.maxCostUsd ?? 10,
-    })
+  router.post("/", async (req, res, next) => {
+    try {
+      const body = req.body as { description?: string; maxTokens?: number; maxCostUsd?: number }
+      const result = await createGoal.execute({
+        description: body.description ?? "",
+        maxTokens: body.maxTokens ?? 100_000,
+        maxCostUsd: body.maxCostUsd ?? 10,
+      })
 
-    if (!result.ok) {
-      res.status(400).json({ error: result.error })
-      return
-    }
+      if (!result.ok) {
+        res.status(400).json({ error: result.error })
+        return
+      }
 
-    res.status(201).json({ goal: toGoalDTO(result.value) })
+      res.status(201).json({ goal: toGoalDTO(result.value) })
+    } catch (err) { next(err) }
   })
 
   return router
@@ -1871,18 +1978,22 @@ import type { TaskId } from "../../../entities/ids"
 export function taskRoutes(tasks: TaskRepository): Router {
   const router = Router()
 
-  router.get("/", async (_req, res) => {
-    const all = await tasks.findAll()
-    res.json({ tasks: all.map(toTaskDTO) })
+  router.get("/", async (_req, res, next) => {
+    try {
+      const all = await tasks.findAll()
+      res.json({ tasks: all.map(toTaskDTO) })
+    } catch (err) { next(err) }
   })
 
-  router.get("/:id", async (req, res) => {
-    const task = await tasks.findById(req.params["id"] as TaskId)
-    if (!task) {
-      res.status(404).json({ error: "Task not found" })
-      return
-    }
-    res.json({ task: toTaskDTO(task) })
+  router.get("/:id", async (req, res, next) => {
+    try {
+      const task = await tasks.findById(req.params["id"] as TaskId)
+      if (!task) {
+        res.status(404).json({ error: "Task not found" })
+        return
+      }
+      res.json({ task: toTaskDTO(task) })
+    } catch (err) { next(err) }
   })
 
   return router
@@ -1899,10 +2010,12 @@ import { toEventDTO } from "../../../adapters/presenters/mappers"
 export function eventRoutes(eventStore: EventStore, sseManager: SSEManager): Router {
   const router = Router()
 
-  router.get("/", async (req, res) => {
-    const limit = parseInt(req.query["limit"] as string) || 50
-    const events = await eventStore.findRecent(limit)
-    res.json({ events: events.map(toEventDTO) })
+  router.get("/", async (req, res, next) => {
+    try {
+      const limit = parseInt(req.query["limit"] as string) || 50
+      const events = await eventStore.findRecent(limit)
+      res.json({ events: events.map(toEventDTO) })
+    } catch (err) { next(err) }
   })
 
   router.get("/stream", (req, res) => {
@@ -1921,9 +2034,11 @@ import type { MetricsPresenter } from "../../../adapters/presenters/MetricsPrese
 export function metricsRoutes(presenter: MetricsPresenter): Router {
   const router = Router()
 
-  router.get("/", async (_req, res) => {
-    const metrics = await presenter.present()
-    res.json(metrics)
+  router.get("/", async (_req, res, next) => {
+    try {
+      const metrics = await presenter.present()
+      res.json(metrics)
+    } catch (err) { next(err) }
   })
 
   return router
@@ -1932,60 +2047,76 @@ export function metricsRoutes(presenter: MetricsPresenter): Router {
 
 - [ ] **Step 5: Implement createServer**
 
+`createServer` is a **thin delivery mechanism**. It receives all dependencies — it does NOT create use cases or presenters. That's the composition root's job. Only one place does dependency wiring.
+
 ```typescript
 // src/infrastructure/http/createServer.ts
-import express from "express"
+import express, { type Request, type Response, type NextFunction } from "express"
 import cors from "cors"
-import type { DevFleetSystem } from "../config/composition-root"
-import { SSEManager } from "./sseManager"
-import { LiveFloorPresenter } from "../../adapters/presenters/LiveFloorPresenter"
-import { PipelinePresenter } from "../../adapters/presenters/PipelinePresenter"
-import { MetricsPresenter } from "../../adapters/presenters/MetricsPresenter"
-import { CreateGoalFromCeo } from "../../use-cases/CreateGoalFromCeo"
-import { PauseAgent } from "../../use-cases/PauseAgent"
+import type { LiveFloorPresenter } from "../../adapters/presenters/LiveFloorPresenter"
+import type { PipelinePresenter } from "../../adapters/presenters/PipelinePresenter"
+import type { MetricsPresenter } from "../../adapters/presenters/MetricsPresenter"
+import type { CreateGoalFromCeo } from "../../use-cases/CreateGoalFromCeo"
+import type { PauseAgent } from "../../use-cases/PauseAgent"
+import type { AgentRegistry } from "../../use-cases/ports/AgentRegistry"
+import type { GoalRepository } from "../../use-cases/ports/GoalRepository"
+import type { TaskRepository } from "../../use-cases/ports/TaskRepository"
+import type { EventStore } from "../../use-cases/ports/EventStore"
+import type { SSEManager } from "./sseManager"
 import { agentRoutes } from "./routes/agentRoutes"
 import { goalRoutes } from "./routes/goalRoutes"
 import { taskRoutes } from "./routes/taskRoutes"
 import { eventRoutes } from "./routes/eventRoutes"
 import { metricsRoutes } from "./routes/metricsRoutes"
 
-export function createServer(system: DevFleetSystem): express.Express {
+export interface DashboardDeps {
+  readonly agentRegistry: AgentRegistry
+  readonly goalRepo: GoalRepository
+  readonly taskRepo: TaskRepository
+  readonly eventStore: EventStore
+  readonly createGoal: CreateGoalFromCeo
+  readonly pauseAgent: PauseAgent
+  readonly liveFloor: LiveFloorPresenter
+  readonly pipeline: PipelinePresenter
+  readonly metrics: MetricsPresenter
+  readonly sseManager: SSEManager
+}
+
+export function createServer(deps: DashboardDeps): express.Express {
   const app = express()
   app.use(cors())
   app.use(express.json())
-
-  // --- Use cases ---
-  const createGoal = new CreateGoalFromCeo(system.goalRepo, system.bus)
-  const pauseAgent = new PauseAgent(system.agentRegistry, system.bus)
-
-  // --- Presenters ---
-  const liveFloor = new LiveFloorPresenter(system.agentRegistry, system.taskRepo, system.eventStore)
-  const pipeline = new PipelinePresenter(system.taskRepo, system.goalRepo, ["spec", "plan", "code", "test", "review"])
-  const metrics = new MetricsPresenter(system.taskRepo, system.eventStore)
-
-  // --- SSE ---
-  const sseManager = new SSEManager(system.bus)
 
   // --- Routes ---
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok" })
   })
 
-  app.get("/api/live-floor", async (_req, res) => {
-    const data = await liveFloor.present()
-    res.json(data)
+  app.get("/api/live-floor", async (_req, res, next) => {
+    try {
+      const data = await deps.liveFloor.present()
+      res.json(data)
+    } catch (err) { next(err) }
   })
 
-  app.get("/api/pipeline", async (_req, res) => {
-    const data = await pipeline.present()
-    res.json(data)
+  app.get("/api/pipeline", async (_req, res, next) => {
+    try {
+      const data = await deps.pipeline.present()
+      res.json(data)
+    } catch (err) { next(err) }
   })
 
-  app.use("/api/agents", agentRoutes(system.agentRegistry, pauseAgent))
-  app.use("/api/goals", goalRoutes(system.goalRepo, createGoal))
-  app.use("/api/tasks", taskRoutes(system.taskRepo))
-  app.use("/api/events", eventRoutes(system.eventStore, sseManager))
-  app.use("/api/metrics", metricsRoutes(metrics))
+  app.use("/api/agents", agentRoutes(deps.agentRegistry, deps.pauseAgent))
+  app.use("/api/goals", goalRoutes(deps.goalRepo, deps.createGoal))
+  app.use("/api/tasks", taskRoutes(deps.taskRepo))
+  app.use("/api/events", eventRoutes(deps.eventStore, deps.sseManager))
+  app.use("/api/metrics", metricsRoutes(deps.metrics))
+
+  // --- Error middleware (Sin 6 fix: structured errors, no stack traces to client) ---
+  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    console.error("[API Error]", err.message)
+    res.status(500).json({ error: "Internal server error" })
+  })
 
   return app
 }
@@ -2016,30 +2147,56 @@ git commit -m "feat(phase3): add Express HTTP API server with all routes and SSE
 - Modify: `src/infrastructure/config/composition-root.ts`
 - Modify: `src/infrastructure/cli/index.ts`
 
-- [ ] **Step 1: Add httpPort to DevFleetConfig**
+The composition root creates ALL dependencies (use cases, presenters, SSE manager) and exposes them as `DashboardDeps`. The CLI passes `DashboardDeps` to `createServer`. **One place does wiring. One.**
 
-In `src/infrastructure/config/composition-root.ts`, add to `DevFleetConfig`:
+- [ ] **Step 1: Add DashboardDeps creation to composition root**
+
+Add to the end of `buildSystem()` in `src/infrastructure/config/composition-root.ts`, after plugin registration:
 
 ```typescript
-export interface DevFleetConfig {
-  readonly workspaceDir: string
-  readonly anthropicApiKey?: string
-  readonly developerModel?: string
-  readonly supervisorModel?: string
-  readonly reviewerModel?: string
-  readonly projectId?: string
-  readonly pipelineTimeoutMs?: number
-  readonly agentTimeoutMs?: number
-  readonly maxRetries?: number
-  readonly buildCommand?: string
-  readonly testCommand?: string
-  readonly httpPort?: number
+import { CreateGoalFromCeo } from "../../use-cases/CreateGoalFromCeo"
+import { PauseAgent } from "../../use-cases/PauseAgent"
+import { LiveFloorPresenter } from "../../adapters/presenters/LiveFloorPresenter"
+import { PipelinePresenter } from "../../adapters/presenters/PipelinePresenter"
+import { MetricsPresenter } from "../../adapters/presenters/MetricsPresenter"
+import { SSEManager } from "../http/sseManager"
+import type { DashboardDeps } from "../http/createServer"
+
+// Inside buildSystem(), after plugin wiring:
+
+  const createGoalFromCeo = new CreateGoalFromCeo(goalRepo, bus)
+  const pauseAgentUseCase = new PauseAgent(agentRegistry, bus)
+  const liveFloorPresenter = new LiveFloorPresenter(agentRegistry, taskRepo, eventStore)
+  const pipelinePresenter = new PipelinePresenter(taskRepo, goalRepo, DEFAULT_PIPELINE.phases)
+  const metricsPresenter = new MetricsPresenter(taskRepo, eventStore)
+  const sseManager = new SSEManager(bus)
+
+  const dashboardDeps: DashboardDeps = {
+    agentRegistry,
+    goalRepo,
+    taskRepo,
+    eventStore,
+    createGoal: createGoalFromCeo,
+    pauseAgent: pauseAgentUseCase,
+    liveFloor: liveFloorPresenter,
+    pipeline: pipelinePresenter,
+    metrics: metricsPresenter,
+    sseManager,
+  }
+```
+
+Add `dashboardDeps` to the returned `DevFleetSystem` interface:
+
+```typescript
+export interface DevFleetSystem {
+  // ... existing fields (now port interfaces from Task 0) ...
+  readonly dashboardDeps: DashboardDeps
+  start(): Promise<void>
+  stop(): Promise<void>
 }
 ```
 
 - [ ] **Step 2: Update CLI to start HTTP server**
-
-Replace the CLI's `main()` function to also start the HTTP server:
 
 In `src/infrastructure/cli/index.ts`, add after `await system.start()`:
 
@@ -2049,42 +2206,8 @@ import * as http from "node:http"
 
 // ... inside main(), after system.start():
 
-const httpPort = parseInt(process.env["HTTP_PORT"] ?? "3100", 10)
-const app = createServer(system)
-const server = http.createServer(app)
-server.listen(httpPort, () => {
-  console.log(`Dashboard API running at http://localhost:${httpPort}`)
-})
-```
-
-And in the `finally` block, add `server.close()` before `system.stop()`.
-
-The full updated `main()`:
-
-```typescript
-async function main(): Promise<void> {
-  console.log("DevFleet CLI — Phase 3 Dashboard + Real-Time")
-  console.log("=============================================")
-
-  if (!API_KEY) {
-    console.log("(No ANTHROPIC_API_KEY set — using mock AI providers)")
-  }
-
-  const system = await buildSystem({
-    workspaceDir: WORKSPACE_DIR,
-    anthropicApiKey: API_KEY,
-    developerModel: process.env["DEVELOPER_MODEL"] ?? "claude-3-5-sonnet-20241022",
-    supervisorModel: process.env["SUPERVISOR_MODEL"] ?? "claude-3-5-sonnet-20241022",
-    reviewerModel: process.env["REVIEWER_MODEL"] ?? "claude-3-5-sonnet-20241022",
-    pipelineTimeoutMs: parseInt(process.env["PIPELINE_TIMEOUT_MS"] ?? "300000", 10),
-    maxRetries: parseInt(process.env["MAX_RETRIES"] ?? "2", 10),
-  })
-
-  await system.start()
-
-  // --- HTTP API server ---
   const httpPort = parseInt(process.env["HTTP_PORT"] ?? "3100", 10)
-  const app = createServer(system)
+  const app = createServer(system.dashboardDeps)
   const server = http.createServer(app)
   server.listen(httpPort, () => {
     console.log(`Dashboard API running at http://localhost:${httpPort}`)
@@ -2301,6 +2424,12 @@ git commit -m "feat(phase3): add dashboard layout with sidebar navigation"
 
 ```typescript
 // dashboard/src/lib/types.ts
+//
+// CONTRACT: These types mirror src/adapters/presenters/dto.ts (the backend DTOs).
+// If you change a field on the backend, update this file to match.
+// TODO: Automate with a script: `cp src/adapters/presenters/dto.ts dashboard/src/lib/types.ts`
+// or publish as a shared package when the project grows.
+//
 export interface AgentDTO {
   readonly id: string
   readonly role: string
@@ -2369,6 +2498,7 @@ export interface MetricsSummary {
 }
 
 export interface SSEEvent {
+  readonly id: string  // Real message ID from backend — never fabricate
   readonly type: string
   readonly timestamp: string
   readonly goalId?: string
@@ -2476,10 +2606,11 @@ export const useDashboardStore = create<DashboardState>((set) => ({
     set({ metrics })
   },
 
+  // Uses the real message ID from the SSE payload — never fabricates identifiers.
   handleSSEEvent: (event: SSEEvent) => {
     set((state) => ({
       recentEvents: [
-        { id: crypto.randomUUID(), type: event.type, agentId: event.agentId ?? null, taskId: event.taskId ?? null, goalId: event.goalId ?? null, occurredAt: event.timestamp },
+        { id: event.id, type: event.type, agentId: event.agentId ?? null, taskId: event.taskId ?? null, goalId: event.goalId ?? null, occurredAt: event.timestamp },
         ...state.recentEvents.slice(0, 49),
       ],
     }))
@@ -3114,7 +3245,7 @@ describe("Phase 3 — API Integration", () => {
 
   beforeEach(async () => {
     system = await buildSystem({ workspaceDir: "/tmp/phase3-test" })
-    app = createServer(system)
+    app = createServer(system.dashboardDeps)
     await system.start()
   })
 
