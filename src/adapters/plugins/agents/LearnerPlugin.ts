@@ -1,4 +1,4 @@
-import type { AgentId, GoalId, TaskId } from "../../../entities/ids"
+import type { AgentId, TaskId } from "../../../entities/ids"
 import type { Message, MessageFilter } from "../../../entities/Message"
 import type { PluginIdentity, Lifecycle, PluginMessageHandler, HealthStatus } from "../../../use-cases/ports/PluginInterfaces"
 import type { MessagePort } from "../../../use-cases/ports/MessagePort"

@@ -77,7 +77,7 @@ export class RunAnalysisCycle {
     } catch { return }
 
     for (const rec of recommendations) {
-      const action = this.buildProposedAction(rec, currentConfig)
+      const action = await this.buildProposedAction(rec, currentConfig)
       if (!action) continue
 
       const insight = createInsight({
@@ -105,7 +105,7 @@ export class RunAnalysisCycle {
     }
   }
 
-  private buildProposedAction(rec: RawRecommendation, currentConfig: Record<string, unknown>): ProposedAction | null {
+  private async buildProposedAction(rec: RawRecommendation, currentConfig: Record<string, unknown>): Promise<ProposedAction | null> {
     const pa = rec.proposedAction
     const config = pa.role ? (currentConfig[pa.role] as { prompt?: string; budget?: { maxTokens: number; maxCostUsd: number }; model?: string } | undefined) : undefined
 
@@ -119,9 +119,12 @@ export class RunAnalysisCycle {
       case "model_reassign":
         if (!pa.role || !pa.newModel) return null
         return { kind: "model_reassign", role: pa.role, currentModel: config?.model ?? "", newModel: pa.newModel }
-      case "skill_update":
+      case "skill_update": {
         if (!pa.skillName || !pa.newContent) return null
-        return { kind: "skill_update", skillName: pa.skillName, currentContent: "", newContent: pa.newContent }
+        let currentContent = ""
+        try { currentContent = await this.skillStore.read(pa.skillName) } catch { /* skill may not exist yet */ }
+        return { kind: "skill_update", skillName: pa.skillName, currentContent, newContent: pa.newContent }
+      }
       case "process_change":
         return { kind: "process_change", description: pa.description ?? rec.description }
       default:
