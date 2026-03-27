@@ -7,5 +7,6 @@ export interface AgentRegistry {
   findById(id: AgentId): Promise<Agent | null>
   register(agent: Agent): Promise<void>
   updateStatus(id: AgentId, status: Agent["status"], taskId?: Agent["currentTaskId"]): Promise<void>
+  updateModel(id: AgentId, model: string): Promise<void>
   findAll(): Promise<ReadonlyArray<Agent>>
 }

@@ -39,6 +39,12 @@ export class InMemoryAgentRegistry implements AgentRegistry {
     })
   }
 
+  async updateModel(id: AgentId, model: string): Promise<void> {
+    const agent = this.store.get(id)
+    if (!agent) throw new Error(`Agent ${id} not found`)
+    this.store.set(id, { ...agent, model })
+  }
+
   async findAll(): Promise<ReadonlyArray<Agent>> {
     return [...this.store.values()]
   }

@@ -49,6 +49,7 @@ describe("AssignTask", () => {
       findById: async () => agent,
       register: async () => undefined,
       updateStatus: async () => undefined,
+      updateModel: async () => undefined,
       findAll: async () => [],
     }
 
@@ -81,6 +82,7 @@ describe("AssignTask", () => {
       findById: async () => makeAgent(),
       register: async () => undefined,
       updateStatus: async () => undefined,
+      updateModel: async () => undefined,
       findAll: async () => [],
     }
     const bus: MessagePort = {
@@ -108,6 +110,7 @@ describe("AssignTask", () => {
       findById: async () => makeAgent(),
       register: async () => undefined,
       updateStatus: async () => undefined,
+      updateModel: async () => undefined,
       findAll: async () => [],
     }
     const bus: MessagePort = {
@@ -135,6 +138,7 @@ describe("AssignTask", () => {
       findById: async () => null,
       register: async () => undefined,
       updateStatus: async () => undefined,
+      updateModel: async () => undefined,
       findAll: async () => [],
     }
     const bus: MessagePort = {
