@@ -38,3 +38,9 @@ export function createEventId(value?: string): EventId {
 export function createProjectId(value?: string): ProjectId {
   return (value ?? randomUUID()) as ProjectId
 }
+
+export type InsightId = string & { readonly __brand: "InsightId" }
+
+export function createInsightId(value?: string): InsightId {
+  return (value ?? randomUUID()) as InsightId
+}
