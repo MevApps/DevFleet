@@ -1,17 +1,20 @@
 import { createKeepDiscardRecord } from "../../src/entities/KeepDiscardRecord"
-import { createAgentId, createTaskId, createArtifactId } from "../../src/entities/ids"
+import { createAgentId, createTaskId, createArtifactId, createGoalId } from "../../src/entities/ids"
 
 describe("KeepDiscardRecord", () => {
   const baseParams = {
     taskId: createTaskId("t-1"),
+    goalId: createGoalId("g-1"),
     agentId: createAgentId("dev-1"),
     phase: "code",
     durationMs: 5000,
     tokensUsed: 1200,
+    costUsd: 0.05,
     verdict: "approved" as const,
     reasons: ["all tests pass", "no lint errors"],
     artifactIds: [createArtifactId("a-1")],
     commitHash: "abc123",
+    iteration: 1,
   }
 
   it("creates record with default recordedAt", () => {
@@ -31,14 +34,17 @@ describe("KeepDiscardRecord", () => {
   it("preserves all fields", () => {
     const record = createKeepDiscardRecord(baseParams)
     expect(record.taskId).toBe(baseParams.taskId)
+    expect(record.goalId).toBe(baseParams.goalId)
     expect(record.agentId).toBe(baseParams.agentId)
     expect(record.phase).toBe("code")
     expect(record.durationMs).toBe(5000)
     expect(record.tokensUsed).toBe(1200)
+    expect(record.costUsd).toBe(0.05)
     expect(record.verdict).toBe("approved")
     expect(record.reasons).toEqual(["all tests pass", "no lint errors"])
     expect(record.artifactIds).toHaveLength(1)
     expect(record.commitHash).toBe("abc123")
+    expect(record.iteration).toBe(1)
   })
 
   it("supports null commitHash", () => {
