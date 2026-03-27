@@ -1,7 +1,8 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 import { api } from "@/lib/api"
 import type { TimingsData } from "@/lib/types"
+import { usePolling } from "@/hooks/use-polling"
 import { MetricValue } from "@/components/primitives/metric-value"
 import { DFBarChart } from "@/components/charts/bar-chart"
 import { EmptyState } from "@/components/primitives/empty-state"
@@ -11,11 +12,12 @@ import { StatusBadge } from "@/components/primitives/status-badge"
 export default function PerformancePage() {
   const [data, setData] = useState<TimingsData | null>(null)
 
-  useEffect(() => {
-    api.timings().then(setData)
-    const interval = setInterval(() => api.timings().then(setData), 10_000)
-    return () => clearInterval(interval)
+  const fetchTimings = useCallback(async () => {
+    const result = await api.timings()
+    setData(result)
   }, [])
+
+  usePolling(fetchTimings)
 
   if (!data) {
     return (
