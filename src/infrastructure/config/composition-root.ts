@@ -5,6 +5,7 @@ import { InMemoryEventStore } from "../../adapters/storage/InMemoryEventStore"
 import { InMemoryMetricRecorder } from "../../adapters/storage/InMemoryMetricRecorder"
 import { InMemoryArtifactRepo } from "../../adapters/storage/InMemoryArtifactRepo"
 import { InMemoryWorktreeManager } from "../../adapters/storage/InMemoryWorktreeManager"
+import { NodeWorktreeManager } from "../../adapters/worktree/NodeWorktreeManager"
 import { InMemoryKeepDiscardRepository } from "../../adapters/storage/InMemoryKeepDiscardRepository"
 import { InMemoryInsightRepository } from "../../adapters/storage/InMemoryInsightRepository"
 import { InMemoryBudgetConfigStore } from "../../adapters/storage/InMemoryBudgetConfigStore"
@@ -272,9 +273,11 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     : new ClaudeProvider(config.anthropicApiKey)
 
   // -------------------------------------------------------------------------
-  // 3. Worktree manager (in-memory for now)
+  // 3. Worktree manager (in-memory for test, NodeWorktreeManager for production)
   // -------------------------------------------------------------------------
-  const worktreeManager = new InMemoryWorktreeManager()
+  const worktreeManager = useMock
+    ? new InMemoryWorktreeManager()
+    : new NodeWorktreeManager(shell, config.workspaceDir)
 
   // -------------------------------------------------------------------------
   // 4. Use cases
@@ -581,6 +584,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
         clearInterval(stuckAgentInterval)
         stuckAgentInterval = null
       }
+      await worktreeManager.cleanupAll()
       sseManager.shutdown()
       await pluginRegistry.stopAll()
     },
