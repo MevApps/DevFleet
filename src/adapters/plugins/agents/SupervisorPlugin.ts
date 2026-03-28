@@ -35,7 +35,7 @@ export interface SupervisorPluginDeps {
   readonly maxRetries: number
   readonly model: string
   readonly systemPrompt: string
-  readonly detectProjectConfig?: DetectProjectConfig
+  readonly detectProjectConfig: DetectProjectConfig
 }
 
 export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
@@ -88,17 +88,15 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
   }
 
   private async handleGoalCreated(goalId: GoalId, description: string): Promise<void> {
-    // Detect project configuration if available
-    if (this.deps.detectProjectConfig) {
-      const config = await this.deps.detectProjectConfig.execute()
-      await this.deps.bus.emit({
-        id: createMessageId(),
-        type: "project.detected",
-        projectId: this.deps.projectId,
-        config,
-        timestamp: new Date(),
-      })
-    }
+    // Detect project configuration
+    const config = await this.deps.detectProjectConfig.execute()
+    await this.deps.bus.emit({
+      id: createMessageId(),
+      type: "project.detected",
+      projectId: this.deps.projectId,
+      config,
+      timestamp: new Date(),
+    })
 
     // Use AI to decompose the goal into tasks
     const prompt = {

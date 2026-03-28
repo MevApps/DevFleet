@@ -93,8 +93,13 @@ maybe("Self-Test: DevFleet on DevFleet", () => {
     const goalId = createGoalId()
     let goalAbandoned = false
 
-    // Budget circuit breaker
-    system.bus.subscribe({ types: ["task.completed"] }, async () => {
+    // Budget circuit breaker — track cost from any message with token fields
+    system.bus.subscribe({}, async (msg) => {
+      const m = msg as unknown as Record<string, unknown>
+      if (typeof m.tokensIn === "number" && typeof m.tokensOut === "number") {
+        const model = typeof m.model === "string" ? m.model : "sonnet"
+        cumulativeCostUsd += estimateCostUsd(m.tokensIn as number, m.tokensOut as number, model)
+      }
       if (cumulativeCostUsd > BUDGET_CIRCUIT_BREAKER_USD && !goalAbandoned) {
         goalAbandoned = true
         console.log(`  CIRCUIT BREAKER: $${cumulativeCostUsd.toFixed(2)} exceeds $${BUDGET_CIRCUIT_BREAKER_USD} limit`)
