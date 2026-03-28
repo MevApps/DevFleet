@@ -45,9 +45,11 @@ interface WorkspaceRun {
 type WorkspaceRunStatus =
   | "created"
   | "cloning"
+  | "installing"     // dependency installation in progress
   | "detecting"
   | "active"
   | "stopped"
+  | "stopped_dirty"  // failed goals exist, clone preserved for debugging
   | "failed"
 
 interface WorkspaceRunConfig {
@@ -66,7 +68,11 @@ interface WorkspaceRunConfig {
 - No `costUsd` on entity — derived on demand from `MetricRecorder`/`EventStore`
 - No `messageTrace` on entity — queried from `EventStore`
 - No `goalId` on entity — a workspace is a session that receives multiple goals via the existing goal creation flow; goals are tracked in `GoalRepository`
-- Status lifecycle: `created → cloning → detecting → active → stopped/failed`
+- `WorkspaceRunId` — branded string type, defined in `src/entities/ids.ts`
+- Status lifecycle: `created → cloning → detecting → active → stopped/stopped_dirty/failed`
+- `stopped`: clean shutdown, clone removed
+- `stopped_dirty`: shutdown with failed goals, clone preserved for debugging
+- `failed`: workspace boot itself failed (clone error, detection error)
 - A workspace is a **session** that can receive multiple goals while active
 
 ---
@@ -77,16 +83,18 @@ interface WorkspaceRunConfig {
 
 ```
 Input:  WorkspaceRunConfig
-Output: WorkspaceRunId
+Output: WorkspaceRunId | Error
 
-1. Create WorkspaceRun entity (status: created)
-2. Clone repo via WorkspaceIsolator.create(repoUrl) (status: cloning)
-3. Return WorkspaceRunId immediately
-4. Kick off BootWorkspace asynchronously
+1. Guard: check WorkspaceRunRepository.findActive() — if active, return error
+2. Create WorkspaceRun entity (status: created)
+3. Clone repo via WorkspaceIsolator.create(repoUrl) (status: cloning)
+4. Return WorkspaceRunId immediately
+5. Kick off BootWorkspace asynchronously
 ```
 
 Returns the ID synchronously. Clone + boot happens async. Caller watches
-progress via SSE.
+progress via SSE. Returns error if a workspace is already active (v1
+supports one workspace at a time).
 
 ### BootWorkspace
 
@@ -95,13 +103,27 @@ Input:  WorkspaceRunId
 Output: void (async, updates status via events)
 
 1. Run DetectProjectConfig against clone (status: detecting)
-2. Build a fresh DevFleetSystem for the clone directory
-3. Start the system (status: active)
-4. Subscribe to goal lifecycle events for auto-push/PR
+2. Install dependencies via WorkspaceIsolator.installDependencies(handle, projectConfig.installCommand) (status: installing)
+3. Build a fresh DevFleetSystem for the clone directory
+4. Start the system (status: active)
+5. Subscribe to goal lifecycle events for auto-push/PR
 ```
 
 Separated from `StartWorkspaceRun` so clone errors are synchronous and
 pipeline errors are async — different error paths, different handlers.
+
+Dependency installation is critical — without it, the clone has no
+`node_modules` (or equivalent) and the Ops agent's test command will fail.
+
+**Note:** `ProjectConfig` gains an `installCommand` field:
+
+| Language | installCommand |
+|----------|---------------|
+| typescript/javascript | `npm install` |
+| rust | `cargo build` |
+| kotlin | `./gradlew build` |
+| go | `go mod download` |
+| unknown | (skip) |
 
 ### StopWorkspace
 
@@ -109,16 +131,31 @@ pipeline errors are async — different error paths, different handlers.
 Input:  WorkspaceRunId
 Output: void
 
-1. Stop the DevFleetSystem
+1. Guard: if goals are currently running, return error (wait for completion or timeout)
+2. Stop the DevFleetSystem
+3. Check if any goals failed (goal.abandoned in EventStore)
+4. If all goals succeeded:
+   a. Cleanup clone via WorkspaceIsolator.cleanup()
+   b. Set status: stopped
+5. If any goals failed:
+   a. Keep clone intact for debugging
+   b. Set status: stopped_dirty
+   c. Return clone path in response (for manual inspection)
+```
+
+### CleanupWorkspace
+
+```
+Input:  WorkspaceRunId
+Output: void
+
+1. Only valid when status is "stopped_dirty"
 2. Cleanup clone via WorkspaceIsolator.cleanup()
 3. Set status: stopped
 ```
 
-Only valid when status is `active`. If goals are currently running, the
-API returns an error — user must wait for completion or the timeout.
-Cleanup always removes the clone on stop (success or failure). Failed
-goals' artifacts and events are preserved in the EventStore for
-inspection via the status endpoint before stopping.
+The manual cleanup for failed workspaces — called from a "Cleanup" button
+on the workspace page after the user has inspected the clone.
 
 ### GetWorkspaceRunStatus
 
@@ -140,9 +177,11 @@ All derived data — queries EventStore, MetricRecorder, GoalRepository.
 Orchestrator that owns the lifecycle of active workspace runs.
 
 ```
-startRun(config) → runId
+startRun(config) → runId | error   // guards: no active workspace
 getStatus(runId) → status DTO
-stop(runId)
+stop(runId) → void | error          // guards: no running goals
+cleanup(runId) → void               // only from stopped_dirty
+findActive() → WorkspaceRun | null
 getEventStream(runId) → MessagePort (for SSE)
 stopAll() → called on server shutdown
 ```
@@ -213,13 +252,18 @@ interface WorkspaceHandle {
 
 interface WorkspaceIsolator {
   create(repoUrl: string): Promise<WorkspaceHandle>
-  getPath(handle: WorkspaceHandle): string
+  installDependencies(handle: WorkspaceHandle, installCommand: string): Promise<void>
+  getWorkspaceDir(handle: WorkspaceHandle): string  // adapter-layer only, not called from use cases
   cleanup(handle: WorkspaceHandle): Promise<void>
 }
 ```
 
-Adapter: `GitCloneIsolator` — uses `git clone` to temp dir, `rm -rf` for
-cleanup. The `WorkspaceHandle` wraps the temp dir path internally.
+Adapter: `GitCloneIsolator` — uses `git clone` to temp dir, runs install
+command via `ShellExecutor`, `rm -rf` for cleanup. The `WorkspaceHandle`
+wraps the temp dir path internally.
+
+`getWorkspaceDir` is called only from the adapter/composition layer when
+building a `DevFleetSystem` — use cases never see the filesystem path.
 
 ### WorkspaceRunRepository
 
@@ -294,7 +338,18 @@ Returns the active workspace status. 404 if no active workspace.
 Response: { status: "stopped" }
 ```
 
-Calls `WorkspaceRunManager.stop()`. Warns if active goals.
+Calls `WorkspaceRunManager.stop()`. Returns error if goals are currently running.
+Returns `{ status: "stopped", clonePath?: string }` — `clonePath` present only
+when status is `stopped_dirty` (failed goals, clone preserved).
+
+### `POST /api/workspace/cleanup`
+
+```
+Response: { status: "stopped" }
+```
+
+Calls `WorkspaceRunManager.cleanup()`. Only valid when status is `stopped_dirty`.
+Removes the preserved clone and transitions to `stopped`.
 
 ### `GET /api/workspace/events`
 
@@ -309,6 +364,19 @@ instead of the main system. The goal route handler checks
 that workspace's `DevFleetSystem` (goalRepo, bus) to create the goal and
 emit `goal.created`. If no workspace is active, it falls back to the main
 system (existing behavior).
+
+**Visibility requirement:** The response includes `{ targetedWorkspace: runId | null }`
+so the UI always knows where the goal went. See Layer 4 for the workspace
+banner on Live Floor.
+
+### `GET /api/workspace/active`
+
+```
+Response: { active: boolean, runId?: string, repoUrl?: string }
+```
+
+Lightweight check for the Live Floor to show/hide the workspace banner.
+Polled or derived from SSE events.
 
 ---
 
@@ -329,15 +397,38 @@ system (existing behavior).
 - **Activity log:** Goal history with status, cost, duration, PR link
 - **Guidance note:** "Create goals from the Live Floor page"
 
+### State 3: Stopped dirty (failed goals, clone preserved)
+
+- **Warning banner:** "Workspace stopped with failed goals. Clone preserved for debugging."
+- **Clone path** displayed for manual inspection
+- **"Cleanup" button** — calls `CleanupWorkspace`, removes clone, transitions to State 1
+- **Activity log** still visible with failure details
+
 ### State transitions
 
-- "Start Workspace" → shows cloning/detecting progress → transitions to active state
-- "Stop Workspace" → confirmation dialog if active goals → transitions to setup state
-- On server restart → resets to setup state (in-memory storage)
+- "Start Workspace" → shows cloning/installing/detecting progress → transitions to active state
+- "Stop Workspace" (all goals succeeded) → auto-cleanup → transitions to State 1
+- "Stop Workspace" (some goals failed) → transitions to State 3 (stopped_dirty)
+- "Cleanup" (from State 3) → removes clone → transitions to State 1
+- On server restart → resets to State 1 (in-memory storage)
 
 ### Navigation
 
 Add "Workspace" to sidebar under the "Workflow" section, between "Pipeline" and "Goals".
+
+### Live Floor: Workspace Banner
+
+When a workspace is active, the Live Floor shows a prominent banner at
+the top of the page:
+
+```
+[blue banner] Workspace active: user/repo — goals target this workspace
+                                                    [View Workspace →]
+```
+
+This prevents silent goal routing — every team member sees that a workspace
+is active before creating goals. The banner links to the workspace page.
+When no workspace is active, the banner is hidden.
 
 ---
 
