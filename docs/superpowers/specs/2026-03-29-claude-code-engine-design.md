@@ -15,7 +15,7 @@ This is not an adapter swap. The execution model changes from **request-response
 The old ports (`AICompletionProvider`, `AIToolProvider`) are replaced by a single new port:
 
 ```typescript
-type AgentCapability = "file_access" | "shell" | "web"
+type AgentCapability = "file_access" | "shell"
 
 interface PhaseTask {
   readonly systemPrompt: string
@@ -103,8 +103,6 @@ type SessionEvent =
 1. **Map** domain capabilities to Claude Code tool names:
    - `"file_access"` -> `["Read", "Write", "Edit", "Glob", "Grep"]`
    - `"shell"` -> `["Bash"]`
-   - `"web"` -> `["WebFetch", "WebSearch"]`
-
 2. **Call** SDK `query()` with:
    - `prompt`: `task.taskDescription`
    - `systemPrompt`: `task.systemPrompt`
