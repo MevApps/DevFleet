@@ -22,6 +22,8 @@ export default function WorkspacePage() {
   const [stopError, setStopError] = useState<string | null>(null)
   const [stopping, setStopping] = useState(false)
   const [cleaning, setCleaning] = useState(false)
+  const [cleanupError, setCleanupError] = useState<string | null>(null)
+  const [clonePath, setClonePath] = useState<string | null>(null)
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -38,7 +40,8 @@ export default function WorkspacePage() {
     setStopping(true)
     setStopError(null)
     try {
-      await api.workspaceStop()
+      const result = await api.workspaceStop()
+      if (result.clonePath) setClonePath(result.clonePath)
       await fetchStatus()
     } catch (err) {
       setStopError(err instanceof Error ? err.message : "Failed to stop workspace")
@@ -49,11 +52,12 @@ export default function WorkspacePage() {
 
   const handleCleanup = async () => {
     setCleaning(true)
+    setCleanupError(null)
     try {
       await api.workspaceCleanup()
       clear()
     } catch {
-      // cleanup failure — re-fetch will show current state
+      setCleanupError("Cleanup failed.")
       await fetchStatus()
     } finally {
       setCleaning(false)
@@ -90,7 +94,11 @@ export default function WorkspacePage() {
         <div className="rounded-lg border border-status-yellow-border bg-status-yellow-surface p-4 flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-text-primary">Workspace stopped with failed goals</p>
-            <p className="text-xs text-text-secondary mt-1">Clone preserved for debugging</p>
+            <p className="text-xs text-text-secondary mt-1">
+              Clone preserved for debugging
+              {clonePath && <> at <code className="bg-page px-1 py-0.5 rounded text-text-primary">{clonePath}</code></>}
+            </p>
+            {cleanupError && <p className="text-xs text-status-red-fg mt-1">{cleanupError}</p>}
           </div>
           <button
             onClick={handleCleanup}
