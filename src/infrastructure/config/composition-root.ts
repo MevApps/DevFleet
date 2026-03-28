@@ -46,6 +46,7 @@ import { ComputeQualityMetrics } from "../../use-cases/ComputeQualityMetrics"
 import { ComputePhaseTimings } from "../../use-cases/ComputePhaseTimings"
 import { AcceptInsight } from "../../use-cases/AcceptInsight"
 import { DismissInsight } from "../../use-cases/DismissInsight"
+import { DetectProjectConfig } from "../../use-cases/DetectProjectConfig"
 import { EvaluateAlert, type AlertRule } from "../../use-cases/EvaluateAlert"
 import { LiveFloorPresenter } from "../../adapters/presenters/LiveFloorPresenter"
 import { PipelinePresenter } from "../../adapters/presenters/PipelinePresenter"
@@ -268,6 +269,8 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const fileSystem: FileSystem = useMock ? createMockFileSystem() : new NodeFileSystem(config.workspaceDir)
   const shell: ShellExecutor = useMock ? createMockShell() : new NodeShellExecutor(config.workspaceDir)
 
+  const detectProjectConfig = new DetectProjectConfig(fileSystem)
+
   const ai: AICompletionProvider & AIToolProvider = useMock
     ? new MockAIProvider()
     : new ClaudeProvider(config.anthropicApiKey)
@@ -419,6 +422,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     maxRetries,
     model: supervisorModel,
     systemPrompt: supervisorPrompt,
+    detectProjectConfig,
   })
 
   const productPlugin = new ProductPlugin({

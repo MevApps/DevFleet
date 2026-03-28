@@ -36,6 +36,12 @@ interface GoalAbandonedMessage extends BaseMessage {
   readonly reason: string
 }
 
+interface ProjectDetectedMessage extends BaseMessage {
+  readonly type: "project.detected"
+  readonly projectId: string
+  readonly config: import("./ProjectConfig").ProjectConfig
+}
+
 // ---------------------------------------------------------------------------
 // Task lifecycle
 // ---------------------------------------------------------------------------
@@ -267,6 +273,7 @@ export type Message =
   | GoalCreatedMessage
   | GoalCompletedMessage
   | GoalAbandonedMessage
+  | ProjectDetectedMessage
   | TaskCreatedMessage
   | TaskAssignedMessage
   | TaskCompletedMessage
