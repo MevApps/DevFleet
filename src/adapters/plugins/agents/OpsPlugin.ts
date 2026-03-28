@@ -2,32 +2,23 @@ import type { AgentId, ProjectId } from "../../../entities/ids"
 import { createMessageId, createArtifactId } from "../../../entities/ids"
 import type { Message, MessageFilter } from "../../../entities/Message"
 import type { PluginIdentity, Lifecycle, PluginMessageHandler, HealthStatus } from "../../../use-cases/ports/PluginInterfaces"
-import type { AgentExecutor } from "../../../use-cases/ports/AgentExecutor"
 import type { TaskRepository } from "../../../use-cases/ports/TaskRepository"
 import type { ArtifactRepository } from "../../../use-cases/ports/ArtifactRepository"
 import type { MessagePort } from "../../../use-cases/ports/MessagePort"
 import type { CreateArtifactUseCase } from "../../../use-cases/CreateArtifact"
+import type { RunBuildAndTest } from "../../../use-cases/RunBuildAndTest"
 import { createArtifact } from "../../../entities/Artifact"
-import { ROLES } from "../../../entities/AgentRole"
 
 export interface OpsPluginDeps {
   readonly agentId: AgentId
   readonly projectId: ProjectId
-  readonly executor: AgentExecutor
+  readonly runBuildAndTest: RunBuildAndTest
   readonly taskRepo: TaskRepository
   readonly artifactRepo: ArtifactRepository
   readonly createArtifact: CreateArtifactUseCase
   readonly bus: MessagePort
-}
-
-const SHELL_RUN_TOOL = {
-  name: "shell_run",
-  description: "Run a shell command",
-  inputSchema: {
-    type: "object" as const,
-    properties: { command: { type: "string" } },
-    required: ["command"],
-  },
+  readonly buildCommand: string
+  readonly testCommand: string
 }
 
 export class OpsPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
@@ -58,28 +49,13 @@ export class OpsPlugin implements PluginIdentity, Lifecycle, PluginMessageHandle
     const task = await this.deps.taskRepo.findById(message.taskId)
     if (!task) return
 
-    const config = {
-      role: ROLES.OPS,
-      systemPrompt: "",
-      tools: [SHELL_RUN_TOOL],
-      model: "deterministic",
-      budget: task.budget,
-    }
-
-    let buildOutput = ""
     const startTime = Date.now()
-    let buildFailed = false
-
-    for await (const event of this.deps.executor.run(this.deps.agentId, config, task, this.deps.projectId)) {
-      if (event.type === "tool_executed" && event.data["success"] === false) {
-        buildFailed = true
-      }
-      if (event.type === "task_completed" && typeof event.data["content"] === "string") {
-        buildOutput = event.data["content"] as string
-      }
-    }
-
+    const result = await this.deps.runBuildAndTest.execute(task.id, this.deps.buildCommand, this.deps.testCommand)
     const durationMs = Date.now() - startTime
+
+    const buildOutput = result.ok
+      ? `${result.value.buildOutput}\n${result.value.testOutput}`
+      : result.error
 
     const passedMatch = buildOutput.match(/(\d+)\s+passed/)
     const failedMatch = buildOutput.match(/(\d+)\s+failed/)
@@ -97,7 +73,7 @@ export class OpsPlugin implements PluginIdentity, Lifecycle, PluginMessageHandle
     })
     await this.deps.createArtifact.execute(artifact)
 
-    if (buildFailed || failed > 0) {
+    if (!result.ok || failed > 0) {
       await this.deps.bus.emit({
         id: createMessageId(),
         type: "build.failed",

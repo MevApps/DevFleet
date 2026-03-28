@@ -25,7 +25,7 @@ export interface WorkspaceRunManagerDeps {
   readonly prCreator: PullRequestCreator
   readonly autoMerge: boolean
   readonly buildSystem: (config: DevFleetConfig) => Promise<DevFleetSystem>
-  readonly apiKey: string
+  readonly mockMode?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -85,7 +85,7 @@ export class WorkspaceRunManager {
       // Build the DevFleet system scoped to the clone directory
       const systemConfig: DevFleetConfig = {
         workspaceDir: cloneDir,
-        anthropicApiKey: this.deps.apiKey,
+        mockMode: this.deps.mockMode,
         supervisorModel: config.supervisorModel,
         developerModel: config.developerModel,
         reviewerModel: config.reviewerModel,

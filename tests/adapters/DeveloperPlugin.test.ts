@@ -1,4 +1,4 @@
-import { DeveloperPlugin, DEVELOPER_TOOLS } from "@adapters/plugins/agents/DeveloperPlugin"
+import { DeveloperPlugin } from "@adapters/plugins/agents/DeveloperPlugin"
 import { InMemoryTaskRepo } from "@adapters/storage/InMemoryTaskRepo"
 import { InMemoryBus } from "@adapters/messaging/InMemoryBus"
 import type { AgentExecutor, AgentEvent, AgentConfig } from "@use-cases/ports/AgentExecutor"
@@ -45,7 +45,6 @@ describe("DeveloperPlugin", () => {
     exists: jest.Mock
     cleanupAll: jest.Mock
   }
-  let mockScopedFactory: jest.Mock
   let plugin: DeveloperPlugin
 
   beforeEach(() => {
@@ -66,8 +65,6 @@ describe("DeveloperPlugin", () => {
       cleanupAll: jest.fn().mockResolvedValue(undefined),
     }
 
-    mockScopedFactory = jest.fn().mockReturnValue(mockExecutor)
-
     plugin = new DeveloperPlugin({
       agentId,
       projectId,
@@ -77,7 +74,7 @@ describe("DeveloperPlugin", () => {
       model: "claude-3-5-sonnet-20241022",
       bus,
       worktreeManager: mockWorktree,
-      scopedExecutorFactory: mockScopedFactory,
+      workspaceDir: "/tmp/workspace",
     })
   })
 
@@ -102,7 +99,7 @@ describe("DeveloperPlugin", () => {
   })
 
   describe("handle", () => {
-    it("delegates to scoped executor when message is for this agent", async () => {
+    it("delegates to executor with capabilities and workingDir", async () => {
       const task = makeTask()
       await taskRepo.create(task)
 
@@ -110,16 +107,18 @@ describe("DeveloperPlugin", () => {
         yield { type: "task_completed", data: {} }
       }
       mockExecutor.run.mockReturnValue(gen())
-      mockScopedFactory.mockReturnValue(mockExecutor)
 
       const msg = makeAssignedMsg(task.id, agentId)
       await plugin.handle(msg)
 
-      expect(mockScopedFactory).toHaveBeenCalledWith("/tmp/mock-worktree")
       expect(mockExecutor.run).toHaveBeenCalledTimes(1)
       expect(mockExecutor.run).toHaveBeenCalledWith(
         agentId,
-        expect.objectContaining({ model: "claude-3-5-sonnet-20241022" }) as AgentConfig,
+        expect.objectContaining({
+          model: "claude-3-5-sonnet-20241022",
+          capabilities: ["file_access", "shell"],
+          workingDir: "/tmp/mock-worktree",
+        }) as AgentConfig,
         task,
         projectId,
       )
@@ -162,7 +161,7 @@ describe("DeveloperPlugin", () => {
 
       const events: AgentEvent[] = [
         { type: "turn_completed", data: { turn: 1 } },
-        { type: "tool_executed", data: { toolName: "file_write" } },
+        { type: "text", data: { content: "working..." } },
         { type: "task_completed", data: {} },
       ]
       const consumed: AgentEvent[] = []
@@ -174,22 +173,10 @@ describe("DeveloperPlugin", () => {
         }
       }
       mockExecutor.run.mockReturnValue(trackingGen())
-      mockScopedFactory.mockReturnValue(mockExecutor)
 
       await plugin.handle(makeAssignedMsg(task.id, agentId))
 
       expect(consumed).toHaveLength(3)
-    })
-  })
-
-  describe("DEVELOPER_TOOLS", () => {
-    it("defines the five expected tools", () => {
-      const names = DEVELOPER_TOOLS.map(t => t.name)
-      expect(names).toContain("file_read")
-      expect(names).toContain("file_write")
-      expect(names).toContain("file_edit")
-      expect(names).toContain("file_glob")
-      expect(names).toContain("shell_run")
     })
   })
 
@@ -219,7 +206,6 @@ describe("DeveloperPlugin", () => {
         yield { type: "task_completed", data: {} }
       }
       mockExecutor.run.mockReturnValue(gen())
-      mockScopedFactory.mockReturnValue(mockExecutor)
 
       await plugin.handle(makeAssignedMsg(task.id, agentId))
 
@@ -255,7 +241,6 @@ describe("DeveloperPlugin – worktree isolation", () => {
 
     async function* emptyGen(): AsyncIterable<AgentEvent> {}
     const mockExecutor: jest.Mocked<AgentExecutor> = { run: jest.fn().mockReturnValue(emptyGen()) }
-    const mockScopedFactory = jest.fn().mockReturnValue(mockExecutor)
     const bus = new InMemoryBus()
 
     const pluginWithWorktree = new DeveloperPlugin({
@@ -267,7 +252,7 @@ describe("DeveloperPlugin – worktree isolation", () => {
       model: "claude-3-5-sonnet-20241022",
       bus,
       worktreeManager: mockWorktree,
-      scopedExecutorFactory: mockScopedFactory,
+      workspaceDir: "/tmp/workspace",
     })
 
     await pluginWithWorktree.handle({
@@ -285,8 +270,13 @@ describe("DeveloperPlugin – worktree isolation", () => {
     const updatedTask = await taskRepo.findById(task.id)
     expect(updatedTask?.branch).toBe(createdBranch)
 
-    // scoped executor is always used — factory is called with the worktree path
-    expect(mockScopedFactory).toHaveBeenCalledWith(`/tmp/${createdBranch}`)
+    // executor is called directly with worktree path as workingDir
+    expect(mockExecutor.run).toHaveBeenCalledWith(
+      agentId,
+      expect.objectContaining({ workingDir: `/tmp/${createdBranch}` }),
+      task,
+      projectId,
+    )
   })
 
   it("always creates a worktree for every task.assigned handle call", async () => {
@@ -305,7 +295,6 @@ describe("DeveloperPlugin – worktree isolation", () => {
 
     async function* emptyGen(): AsyncIterable<AgentEvent> {}
     const mockExecutor: jest.Mocked<AgentExecutor> = { run: jest.fn().mockReturnValue(emptyGen()) }
-    const mockScopedFactory = jest.fn().mockReturnValue(mockExecutor)
 
     const plugin = new DeveloperPlugin({
       agentId,
@@ -316,7 +305,7 @@ describe("DeveloperPlugin – worktree isolation", () => {
       model: "claude-3-5-sonnet-20241022",
       bus,
       worktreeManager: mockWorktree,
-      scopedExecutorFactory: mockScopedFactory,
+      workspaceDir: "/tmp/workspace",
     })
 
     // Handle two separate tasks
@@ -332,11 +321,9 @@ describe("DeveloperPlugin – worktree isolation", () => {
       })
       await taskRepo.create(t)
       mockExecutor.run.mockReturnValue(emptyGen())
-      mockScopedFactory.mockReturnValue(mockExecutor)
       await plugin.handle({ id: createMessageId(), type: "task.assigned", taskId: t.id, agentId, timestamp: new Date() })
     }
 
     expect(mockWorktree.create).toHaveBeenCalledTimes(2)
-    expect(mockScopedFactory).toHaveBeenCalledTimes(2)
   })
 })

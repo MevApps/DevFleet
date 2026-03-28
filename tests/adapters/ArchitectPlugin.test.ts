@@ -59,6 +59,7 @@ function createTestArchitectPlugin(overrides: Record<string, any> = {}): Archite
     bus: new InMemoryBus(),
     systemPrompt: "Design a plan.",
     model: "sonnet",
+    workspaceDir: "/tmp/workspace",
     ...overrides,
   })
 }

@@ -8,7 +8,7 @@ describe("Phase 3 — API Integration", () => {
   let app: Express
 
   beforeEach(async () => {
-    system = await buildSystem({ workspaceDir: "/tmp/phase3-test" })
+    system = await buildSystem({ workspaceDir: "/tmp/phase3-test", mockMode: true })
     app = createServer(system.dashboardDeps)
     await system.start()
   })

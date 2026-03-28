@@ -7,6 +7,16 @@ import { createAgentId, createGoalId, createTaskId, createMessageId } from "../.
 import { createPipelineConfig } from "../../src/entities/PipelineConfig"
 import { ROLES } from "../../src/entities/AgentRole"
 import { success } from "../../src/use-cases/Result"
+import type { SessionEvent } from "../../src/use-cases/ports/AgentSession"
+
+function createMockAgentSession(result: string = "[]") {
+  return {
+    async *launch(): AsyncIterable<SessionEvent> {
+      yield { type: "started" as const, sessionId: "s-1", model: "claude-opus-4-6" }
+      yield { type: "completed" as const, result, totalTokensIn: 100, totalTokensOut: 200, durationMs: 500, numTurns: 1 }
+    },
+  }
+}
 
 describe("SupervisorPlugin", () => {
   it("has correct identity", () => {
@@ -97,7 +107,7 @@ function createTestPlugin(overrides: Partial<SupervisorPluginDeps> = {}): Superv
     agentRegistry: new InMemoryAgentRegistry(),
     decomposeGoal: { execute: async () => success(undefined) } as any,
     assignTask: { execute: async () => success(undefined) } as any,
-    promptAgent: { execute: async () => success({ content: "[]", toolCalls: [], tokensIn: 0, tokensOut: 0, stopReason: "end_turn" as const }) } as any,
+    agentSession: createMockAgentSession(),
     evaluateKeepDiscard: { execute: async () => success("keep" as const) } as any,
     mergeBranch: { execute: async () => success("abc") } as any,
     discardBranch: { execute: async () => success(undefined) } as any,
@@ -115,6 +125,7 @@ function createTestPlugin(overrides: Partial<SupervisorPluginDeps> = {}): Superv
     maxRetries: 3,
     model: "claude-opus-4-6",
     systemPrompt: "You are a supervisor.",
+    workspaceDir: "/tmp/workspace",
   }
   return new SupervisorPlugin({ ...defaults, ...overrides })
 }

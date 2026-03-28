@@ -10,7 +10,7 @@ import type { GoalRepository } from "../../../use-cases/ports/GoalRepository"
 import type { AgentRegistry } from "../../../use-cases/ports/AgentRegistry"
 import type { DecomposeGoal, TaskDefinition } from "../../../use-cases/DecomposeGoal"
 import type { AssignTask } from "../../../use-cases/AssignTask"
-import type { PromptAgent } from "../../../use-cases/PromptAgent"
+import type { AgentSession, PhaseTask } from "../../../use-cases/ports/AgentSession"
 import type { EvaluateKeepDiscard } from "../../../use-cases/EvaluateKeepDiscard"
 import type { MergeBranch } from "../../../use-cases/MergeBranch"
 import type { DiscardBranch } from "../../../use-cases/DiscardBranch"
@@ -27,7 +27,7 @@ export interface SupervisorPluginDeps {
   readonly agentRegistry: AgentRegistry
   readonly decomposeGoal: DecomposeGoal
   readonly assignTask: AssignTask
-  readonly promptAgent: PromptAgent
+  readonly agentSession: AgentSession
   readonly evaluateKeepDiscard: EvaluateKeepDiscard
   readonly mergeBranch: MergeBranch
   readonly discardBranch: DiscardBranch
@@ -36,6 +36,7 @@ export interface SupervisorPluginDeps {
   readonly model: string
   readonly systemPrompt: string
   readonly detectProjectConfig: DetectProjectConfig
+  readonly workspaceDir: string
 }
 
 export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
@@ -98,21 +99,28 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
       timestamp: new Date(),
     })
 
-    // Use AI to decompose the goal into tasks
-    const prompt = {
+    // Use AgentSession to decompose the goal into tasks
+    const phaseTask: PhaseTask = {
       systemPrompt: this.deps.systemPrompt,
-      messages: [{ role: "user" as const, content: `Decompose this goal into tasks. Return a JSON array of {description, phase} objects.\nPhases available: ${this.deps.pipelineConfig.phases.join(", ")}\n\nGoal: ${description}` }],
+      taskDescription: `Decompose this goal into tasks. Return a JSON array of {description, phase} objects.\nPhases available: ${this.deps.pipelineConfig.phases.join(", ")}\n\nGoal: ${description}`,
+      workingDir: this.deps.workspaceDir,
+      capabilities: [],
       model: this.deps.model,
-      maxTokens: 4096,
     }
 
-    const promptResult = await this.deps.promptAgent.execute(prompt, [], createBudget({ maxTokens: 10000, maxCostUsd: 1.0 }))
-    if (!promptResult.ok) return
+    let content = ""
+    const controller = new AbortController()
+    for await (const event of this.deps.agentSession.launch(phaseTask, controller.signal)) {
+      if (event.type === "completed") {
+        content = event.result
+      }
+    }
+
+    if (!content) return
 
     // Parse AI response into task definitions
     let taskDefs: Array<{ description: string; phase: string }>
     try {
-      const content = promptResult.value.content
       const jsonMatch = content.match(/\[[\s\S]*\]/)
       taskDefs = jsonMatch ? JSON.parse(jsonMatch[0]) : []
     } catch {

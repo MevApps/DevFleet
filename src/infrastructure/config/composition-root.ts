@@ -16,8 +16,8 @@ import { NodeFileSystem } from "../../adapters/filesystem/NodeFileSystem"
 import { NodeShellExecutor } from "../../adapters/shell/NodeShellExecutor"
 import { FileSystemAgentPromptStore } from "../../adapters/filesystem/FileSystemAgentPromptStore"
 import { FileSystemSkillStore } from "../../adapters/filesystem/FileSystemSkillStore"
-import { ClaudeProvider } from "../../adapters/ai-providers/ClaudeProvider"
-import { DeterministicProvider } from "../../adapters/ai-providers/DeterministicProvider"
+import { ClaudeAgentSdkAdapter } from "../../adapters/ai-providers/ClaudeAgentSdkAdapter"
+import { MockAgentSession } from "../../adapters/ai-providers/MockAgentSession"
 import { NoOpNotificationAdapter } from "../../adapters/notifications/NoOpNotificationAdapter"
 import { PluginRegistry } from "../../adapters/plugins/PluginRegistry"
 import { SupervisorPlugin } from "../../adapters/plugins/agents/SupervisorPlugin"
@@ -28,11 +28,10 @@ import { ReviewerPlugin } from "../../adapters/plugins/agents/ReviewerPlugin"
 import { OpsPlugin } from "../../adapters/plugins/agents/OpsPlugin"
 import { LearnerPlugin } from "../../adapters/plugins/agents/LearnerPlugin"
 import { CheckBudget } from "../../use-cases/CheckBudget"
-import { PromptAgent } from "../../use-cases/PromptAgent"
-import { ExecuteToolCalls } from "../../use-cases/ExecuteToolCalls"
 import { RecordTurnMetrics } from "../../use-cases/RecordTurnMetrics"
-import { EvaluateTurnOutcome } from "../../use-cases/EvaluateTurnOutcome"
-import { RunAgentLoop } from "../../use-cases/RunAgentLoop"
+import { RunAgentSession } from "../../use-cases/RunAgentSession"
+import { RunBuildAndTest } from "../../use-cases/RunBuildAndTest"
+import { EvaluateOutcome } from "../../use-cases/EvaluateOutcome"
 import { DecomposeGoal } from "../../use-cases/DecomposeGoal"
 import { AssignTask } from "../../use-cases/AssignTask"
 import { EvaluateKeepDiscard } from "../../use-cases/EvaluateKeepDiscard"
@@ -64,16 +63,7 @@ import { join } from "node:path"
 import { createAgent } from "../../entities/Agent"
 import { ROLES } from "../../entities/AgentRole"
 import { createPipelineConfig } from "../../entities/PipelineConfig"
-import type {
-  AICompletionProvider,
-  AIToolProvider,
-  AICapability,
-  AgentPrompt,
-  AIResponse,
-  AIToolResponse,
-  ToolDefinition,
-} from "../../use-cases/ports/AIProvider"
-import type { TokenBudget } from "../../entities/Budget"
+import type { AgentSession } from "../../use-cases/ports/AgentSession"
 import type { FileSystem } from "../../use-cases/ports/FileSystem"
 import type { ShellExecutor, ShellExecutorFactory } from "../../use-cases/ports/ShellExecutor"
 import type { TaskRepository } from "../../use-cases/ports/TaskRepository"
@@ -89,7 +79,7 @@ import type { MessagePort } from "../../use-cases/ports/MessagePort"
 // ---------------------------------------------------------------------------
 export interface DevFleetConfig {
   readonly workspaceDir: string
-  readonly anthropicApiKey?: string
+  readonly mockMode?: boolean
   readonly developerModel?: string
   readonly supervisorModel?: string
   readonly reviewerModel?: string
@@ -140,64 +130,6 @@ const DEFAULT_PIPELINE = createPipelineConfig({
 })
 
 // ---------------------------------------------------------------------------
-// Mock AI provider for testing (no API key)
-// ---------------------------------------------------------------------------
-class MockAIProvider implements AICompletionProvider, AIToolProvider {
-  readonly capabilities: ReadonlySet<AICapability> = new Set(["tool_use"])
-
-  async complete(_prompt: AgentPrompt, _budget: TokenBudget): Promise<AIResponse> {
-    const content = this.generateResponse(_prompt.systemPrompt)
-    return { content, tokensIn: 10, tokensOut: 20, stopReason: "end_turn" }
-  }
-
-  async completeWithTools(
-    _prompt: AgentPrompt,
-    _tools: ReadonlyArray<ToolDefinition>,
-    _budget: TokenBudget,
-  ): Promise<AIToolResponse> {
-    const content = this.generateResponse(_prompt.systemPrompt)
-    return { content, toolCalls: [], tokensIn: 10, tokensOut: 20, stopReason: "end_turn" }
-  }
-
-  private generateResponse(systemPrompt: string): string {
-    // Return role-appropriate canned responses based on the system prompt
-    const lower = systemPrompt.toLowerCase()
-
-    if (lower.includes("decompose") || lower.includes("supervisor")) {
-      return JSON.stringify([
-        { description: "Write requirement spec", phase: "spec" },
-        { description: "Create implementation plan", phase: "plan" },
-        { description: "Implement the feature", phase: "code" },
-        { description: "Run build and tests", phase: "test" },
-        { description: "Review the implementation", phase: "review" },
-      ])
-    }
-
-    if (lower.includes("product") || lower.includes("requirement")) {
-      return "# Requirement Spec\n\n1. The system shall implement the requested feature.\n\nSuccess Criteria:\n- Feature works as described"
-    }
-
-    if (lower.includes("architect") || lower.includes("plan")) {
-      return "# Implementation Plan\n\n## Step 1: Create module\nCreate the main module.\n\n## Step 2: Add tests\nAdd unit tests."
-    }
-
-    if (lower.includes("developer") || lower.includes("implement")) {
-      return "Implementation complete. Created the requested feature with tests."
-    }
-
-    if (lower.includes("review") || lower.includes("evaluate")) {
-      return "APPROVED - Code meets requirements and follows best practices."
-    }
-
-    if (lower.includes("ops") || lower.includes("build")) {
-      return "Build OK\n10 passed, 0 failed"
-    }
-
-    return "Task completed successfully."
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Mock file system (for test mode)
 // ---------------------------------------------------------------------------
 function createMockFileSystem(): FileSystem {
@@ -245,7 +177,7 @@ function loadPrompt(role: string, fallback: string): string {
 // buildSystem: wire all dependencies
 // ---------------------------------------------------------------------------
 export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSystem> {
-  const useMock = !config.anthropicApiKey
+  const useMock = config.mockMode ?? false
   const maxRetries = config.maxRetries ?? 2
   const pipelineTimeoutMs = config.pipelineTimeoutMs ?? 300_000 // 5 min
 
@@ -276,9 +208,9 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
 
   const detectProjectConfig = new DetectProjectConfig(fileSystem)
 
-  const ai: AICompletionProvider & AIToolProvider = useMock
-    ? new MockAIProvider()
-    : new ClaudeProvider(config.anthropicApiKey)
+  const agentSession: AgentSession = useMock
+    ? new MockAgentSession()
+    : new ClaudeAgentSdkAdapter()
 
   // -------------------------------------------------------------------------
   // 3. Worktree manager (in-memory for test, NodeWorktreeManager for production)
@@ -291,10 +223,8 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   // 4. Use cases
   // -------------------------------------------------------------------------
   const checkBudget = new CheckBudget(taskRepo)
-  const promptAgent = new PromptAgent(ai, ai)
-  const executeToolCalls = new ExecuteToolCalls(fileSystem, shell)
   const recordTurnMetrics = new RecordTurnMetrics(metricRecorder, taskRepo)
-  const evaluateTurnOutcome = new EvaluateTurnOutcome(taskRepo, bus)
+  const evaluateOutcome = new EvaluateOutcome(taskRepo, bus)
   const decomposeGoal = new DecomposeGoal(goalRepo, taskRepo, bus)
   const assignTask = new AssignTask(taskRepo, agentRegistry, bus)
   const evaluateKeepDiscard = new EvaluateKeepDiscard(taskRepo)
@@ -310,61 +240,19 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const agentTimeoutMs = config.agentTimeoutMs ?? 300_000 // 5 min
 
   // -------------------------------------------------------------------------
-  // 5. One RunAgentLoop per agent tier (different AI + tool configurations)
+  // 5. Agent executor and build/test use cases
   // -------------------------------------------------------------------------
-  const agentExecutor = new RunAgentLoop(
-    checkBudget,
-    promptAgent,
-    executeToolCalls,
-    recordTurnMetrics,
-    evaluateTurnOutcome,
-    taskRepo,
+  const agentExecutor = new RunAgentSession(
+    agentSession, checkBudget, recordTurnMetrics, evaluateOutcome, bus,
   )
 
-  // Ops executor: DeterministicProvider drives build/test commands deterministically.
-  // Using a separate RunAgentLoop ensures Ops never routes through the shared AI provider.
   const buildCommand = config.buildCommand ?? "npm run build"
   const testCommand = config.testCommand ?? "npm test"
-  const opsProvider = useMock
-    ? new MockAIProvider()
-    : new DeterministicProvider([
-        { name: "shell_run", input: { command: buildCommand } },
-        { name: "shell_run", input: { command: testCommand } },
-      ])
-  const opsPromptAgent = new PromptAgent(opsProvider, opsProvider)
-  const opsExecuteToolCalls = new ExecuteToolCalls(fileSystem, shell)
-  const opsExecutor = new RunAgentLoop(
-    checkBudget,
-    opsPromptAgent,
-    opsExecuteToolCalls,
-    recordTurnMetrics,
-    evaluateTurnOutcome,
-    taskRepo,
-  )
+  const runBuildAndTest = new RunBuildAndTest(shell, taskRepo, recordTurnMetrics, bus)
 
-  // Scoped executor factory: DeveloperPlugin calls this with the worktree path to get
-  // a RunAgentLoop whose FileSystem and ShellExecutor are rooted at that directory.
-  // The factory is the Layer 4 abstraction — the plugin receives a port, not concrete classes.
-  const fsFactory = useMock
-    ? (_path: string): FileSystem => createMockFileSystem()
-    : (path: string): FileSystem => new NodeFileSystem(path)
   const shellFactory: ShellExecutorFactory = useMock
     ? (_path: string): ShellExecutor => createMockShell()
     : (path: string): ShellExecutor => new NodeShellExecutor(path)
-
-  const scopedExecutorFactory = (workingDir: string): RunAgentLoop => {
-    const scopedFs = fsFactory(workingDir)
-    const scopedShell = shellFactory(workingDir)
-    const scopedExecuteToolCalls = new ExecuteToolCalls(scopedFs, scopedShell)
-    return new RunAgentLoop(
-      checkBudget,
-      promptAgent,
-      scopedExecuteToolCalls,
-      recordTurnMetrics,
-      evaluateTurnOutcome,
-      taskRepo,
-    )
-  }
 
   // -------------------------------------------------------------------------
   // 6. Agent IDs and models
@@ -419,7 +307,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     agentRegistry,
     decomposeGoal,
     assignTask,
-    promptAgent,
+    agentSession,
     evaluateKeepDiscard,
     mergeBranch,
     discardBranch,
@@ -428,6 +316,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     model: supervisorModel,
     systemPrompt: supervisorPrompt,
     detectProjectConfig,
+    workspaceDir: config.workspaceDir,
   })
 
   const productPlugin = new ProductPlugin({
@@ -440,6 +329,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     bus,
     systemPrompt: productPrompt,
     model: developerModel,
+    workspaceDir: config.workspaceDir,
   })
 
   const architectPlugin = new ArchitectPlugin({
@@ -452,6 +342,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     bus,
     systemPrompt: architectPrompt,
     model: developerModel,
+    workspaceDir: config.workspaceDir,
   })
 
   const developerPlugin = new DeveloperPlugin({
@@ -463,7 +354,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     model: developerModel,
     bus,
     worktreeManager,
-    scopedExecutorFactory,
+    workspaceDir: config.workspaceDir,
   })
 
   const reviewerPlugin = new ReviewerPlugin({
@@ -476,16 +367,19 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     bus,
     systemPrompt: reviewerPrompt,
     model: reviewerModel,
+    workspaceDir: config.workspaceDir,
   })
 
   const opsPlugin = new OpsPlugin({
     agentId: opsId,
     projectId,
-    executor: opsExecutor,
+    runBuildAndTest,
     taskRepo,
     artifactRepo,
     createArtifact,
     bus,
+    buildCommand,
+    testCommand,
   })
 
   const learnerPlugin = new LearnerPlugin({
@@ -561,7 +455,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     prCreator,
     autoMerge,
     buildSystem,
-    apiKey: config.anthropicApiKey ?? "",
+    mockMode: useMock,
   })
 
   const dashboardDeps: DashboardDeps = {

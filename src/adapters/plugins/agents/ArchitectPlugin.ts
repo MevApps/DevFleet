@@ -20,6 +20,7 @@ export interface ArchitectPluginDeps {
   readonly bus: MessagePort
   readonly systemPrompt: string
   readonly model: string
+  readonly workspaceDir: string
 }
 
 export class ArchitectPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
@@ -60,9 +61,10 @@ export class ArchitectPlugin implements PluginIdentity, Lifecycle, PluginMessage
     const config = {
       role: ROLES.ARCHITECT,
       systemPrompt: this.deps.systemPrompt + specContext,
-      tools: [],
+      capabilities: [],
       model: this.deps.model,
       budget: task.budget,
+      workingDir: this.deps.workspaceDir,
     }
 
     let content = ""

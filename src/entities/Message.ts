@@ -145,6 +145,18 @@ interface TestReportCreatedMessage extends BaseMessage {
   readonly taskId: TaskId
 }
 
+interface TestPassedMessage extends BaseMessage {
+  readonly type: "test.passed"
+  readonly taskId: TaskId
+  readonly durationMs: number
+}
+
+interface TestFailedMessage extends BaseMessage {
+  readonly type: "test.failed"
+  readonly taskId: TaskId
+  readonly error: string
+}
+
 // ---------------------------------------------------------------------------
 // Review
 // ---------------------------------------------------------------------------
@@ -210,6 +222,12 @@ interface CeoOverrideMessage extends BaseMessage {
 
 interface ScheduleIdeationMessage extends BaseMessage {
   readonly type: "schedule.ideation"
+}
+
+interface AgentActiveMessage extends BaseMessage {
+  readonly type: "agent.active"
+  readonly agentId: AgentId
+  readonly taskId: TaskId
 }
 
 interface AgentStuckMessage extends BaseMessage {
@@ -310,6 +328,8 @@ export type Message =
   | BuildPassedMessage
   | BuildFailedMessage
   | TestReportCreatedMessage
+  | TestPassedMessage
+  | TestFailedMessage
   | ReviewApprovedMessage
   | ReviewRejectedMessage
   | BudgetExceededMessage
@@ -318,6 +338,7 @@ export type Message =
   | InsightGeneratedMessage
   | CeoOverrideMessage
   | ScheduleIdeationMessage
+  | AgentActiveMessage
   | AgentStuckMessage
   | AgentPausedMessage
   | AgentResumedMessage

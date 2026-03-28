@@ -11,7 +11,7 @@ describe("Phase 2 End-to-End", () => {
   beforeEach(async () => {
     system = await buildSystem({
       workspaceDir: process.cwd(),
-      // No API key → uses MockAIProvider
+      mockMode: true,
     })
     await system.start()
   })

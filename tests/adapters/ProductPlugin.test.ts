@@ -69,6 +69,7 @@ function createTestProductPlugin(overrides: Record<string, any> = {}): ProductPl
     bus: new InMemoryBus(),
     systemPrompt: "Write a spec.",
     model: "sonnet",
+    workspaceDir: "/tmp/workspace",
     ...overrides,
   })
 }

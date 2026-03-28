@@ -115,7 +115,7 @@ function buildDeps(overrides: Partial<WorkspaceRunManagerDeps> = {}): WorkspaceR
     } as PullRequestCreator,
     autoMerge: false,
     buildSystem: jest.fn().mockResolvedValue(system),
-    apiKey: "test-api-key",
+    mockMode: true,
     ...overrides,
   }
 }
@@ -138,7 +138,7 @@ describe("WorkspaceRunManager", () => {
 
       // Verify the system config passed to buildSystem
       const systemConfig = (deps.buildSystem as jest.Mock).mock.calls[0][0] as DevFleetConfig
-      expect(systemConfig.anthropicApiKey).toBe("test-api-key")
+      expect(systemConfig.mockMode).toBe(true)
       expect(systemConfig.workspaceDir).toContain("handle-0")
     })
 
