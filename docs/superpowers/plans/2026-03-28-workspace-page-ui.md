@@ -6,7 +6,7 @@
 
 **Architecture:** New Zustand store (state-only, no API calls) + 4 API client methods + 4 new components + SSE workspace event handling. Layout shell fetches workspace status on mount; SSE keeps it current. Two existing pages modified for workspace banners and goal-form gating.
 
-**Tech Stack:** Next.js 15, React 19, TypeScript, Zustand 5, Tailwind CSS 4, lucide-react
+**Tech Stack:** Next.js 15, React 19, TypeScript, Zustand 5, Tailwind CSS 4, lucide-react, Vitest, @testing-library/react
 
 **Spec:** `docs/superpowers/specs/2026-03-28-workspace-dashboard-ui-design.md`
 
@@ -19,7 +19,11 @@
 | Modify | `dashboard/src/lib/types.ts` | Add workspace DTOs |
 | Modify | `dashboard/src/lib/api.ts` | Add 4 workspace API methods |
 | Create | `dashboard/src/lib/workspace-store.ts` | Zustand store (state only) |
-| Modify | `dashboard/src/lib/registry/statuses.ts` | Add `delivered`, `stopped_dirty`, `cloning`, `installing`, `detecting` statuses |
+| Create | `dashboard/src/lib/workspace-store.test.ts` | Store tests |
+| Modify | `dashboard/src/lib/utils/format.ts` | Add `formatElapsed` function |
+| Modify | `dashboard/src/lib/utils/__tests__/format.test.ts` | Tests for `formatElapsed` |
+| Modify | `dashboard/src/lib/registry/statuses.ts` | Add workspace statuses |
+| Modify | `dashboard/src/lib/registry/__tests__/statuses.test.ts` | Tests for new statuses |
 | Modify | `dashboard/src/lib/registry/icons.ts` | Add `Container` icon |
 | Modify | `dashboard/src/lib/navigation.ts` | Add Workspace to sidebar + PAGE_TITLES |
 | Modify | `dashboard/src/lib/useSSE.ts` | Add workspace event types + store update |
@@ -128,12 +132,88 @@ git commit -m "feat(dashboard): add workspace DTOs and API client methods"
 
 ---
 
-## Task 2: Workspace Zustand Store
+## Task 2: Workspace Zustand Store + Tests
 
 **Files:**
 - Create: `dashboard/src/lib/workspace-store.ts`
+- Create: `dashboard/src/lib/__tests__/workspace-store.test.ts`
 
-- [ ] **Step 1: Create the workspace store**
+- [ ] **Step 1: Write the failing tests**
+
+Create `dashboard/src/lib/__tests__/workspace-store.test.ts`:
+
+```typescript
+import { describe, it, expect, beforeEach } from "vitest"
+import { useWorkspaceStore } from "../workspace-store"
+import type { WorkspaceStatusDTO } from "../types"
+
+const makeStatusDTO = (overrides?: Partial<WorkspaceStatusDTO>): WorkspaceStatusDTO => ({
+  run: {
+    id: "ws-1",
+    config: { repoUrl: "https://github.com/acme/app" },
+    status: "active",
+    projectConfig: { language: "typescript", testCommand: "npm test", installCommand: "npm install" },
+    startedAt: "2026-03-28T10:00:00Z",
+    completedAt: null,
+    error: null,
+  },
+  costUsd: 2.47,
+  goalSummaries: [
+    { goalId: "g-1", description: "Add auth", status: "delivered", costUsd: 0.82, durationMs: 180_000, prUrl: "https://github.com/acme/app/pull/14" },
+  ],
+  ...overrides,
+})
+
+describe("useWorkspaceStore", () => {
+  beforeEach(() => {
+    useWorkspaceStore.getState().clear()
+  })
+
+  it("starts with null run", () => {
+    expect(useWorkspaceStore.getState().run).toBeNull()
+    expect(useWorkspaceStore.getState().goalSummaries).toEqual([])
+    expect(useWorkspaceStore.getState().costUsd).toBe(0)
+    expect(useWorkspaceStore.getState().error).toBeNull()
+  })
+
+  it("setStatus populates run, goalSummaries, costUsd and clears error", () => {
+    useWorkspaceStore.getState().setError("previous error")
+    const dto = makeStatusDTO()
+    useWorkspaceStore.getState().setStatus(dto)
+
+    const state = useWorkspaceStore.getState()
+    expect(state.run?.id).toBe("ws-1")
+    expect(state.run?.status).toBe("active")
+    expect(state.goalSummaries).toHaveLength(1)
+    expect(state.goalSummaries[0].goalId).toBe("g-1")
+    expect(state.costUsd).toBe(2.47)
+    expect(state.error).toBeNull()
+  })
+
+  it("setError sets error", () => {
+    useWorkspaceStore.getState().setError("something broke")
+    expect(useWorkspaceStore.getState().error).toBe("something broke")
+  })
+
+  it("clear resets all state", () => {
+    useWorkspaceStore.getState().setStatus(makeStatusDTO())
+    useWorkspaceStore.getState().clear()
+
+    const state = useWorkspaceStore.getState()
+    expect(state.run).toBeNull()
+    expect(state.goalSummaries).toEqual([])
+    expect(state.costUsd).toBe(0)
+    expect(state.error).toBeNull()
+  })
+})
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd dashboard && npx vitest run src/lib/__tests__/workspace-store.test.ts`
+Expected: FAIL — module not found
+
+- [ ] **Step 3: Create the workspace store**
 
 Create `dashboard/src/lib/workspace-store.ts`:
 
@@ -167,52 +247,146 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 }))
 ```
 
-- [ ] **Step 2: Verify build**
+- [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd dashboard && npx tsc --noEmit`
-Expected: No type errors
+Run: `cd dashboard && npx vitest run src/lib/__tests__/workspace-store.test.ts`
+Expected: 4 tests PASS
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add dashboard/src/lib/workspace-store.ts
-git commit -m "feat(dashboard): add workspace Zustand store (state only)"
+git add dashboard/src/lib/workspace-store.ts dashboard/src/lib/__tests__/workspace-store.test.ts
+git commit -m "feat(dashboard): add workspace Zustand store with tests"
 ```
 
 ---
 
-## Task 3: Registries + Navigation
+## Task 3: formatElapsed Utility + Tests
+
+**Files:**
+- Modify: `dashboard/src/lib/utils/format.ts`
+- Modify: `dashboard/src/lib/utils/__tests__/format.test.ts`
+
+- [ ] **Step 1: Write the failing tests**
+
+Add to the end of `dashboard/src/lib/utils/__tests__/format.test.ts`:
+
+```typescript
+import { formatElapsed } from '../format'
+
+describe('formatElapsed', () => {
+  it('formats seconds', () => {
+    const start = new Date(Date.now() - 30_000).toISOString()
+    expect(formatElapsed(start)).toBe('30s')
+  })
+  it('formats minutes', () => {
+    const start = new Date(Date.now() - 840_000).toISOString()
+    expect(formatElapsed(start)).toBe('14m')
+  })
+  it('formats hours and minutes', () => {
+    const start = new Date(Date.now() - 3_900_000).toISOString()
+    expect(formatElapsed(start)).toBe('1h 5m')
+  })
+  it('formats zero as 0s', () => {
+    const start = new Date().toISOString()
+    expect(formatElapsed(start)).toBe('0s')
+  })
+})
+```
+
+Also add the import of `formatElapsed` to the existing import line at the top of the test file:
+
+```typescript
+import { formatTokens, formatCurrency, formatPercent, formatTimeAgo, formatElapsed } from '../format'
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd dashboard && npx vitest run src/lib/utils/__tests__/format.test.ts`
+Expected: FAIL — `formatElapsed` is not exported
+
+- [ ] **Step 3: Implement formatElapsed**
+
+Add to the end of `dashboard/src/lib/utils/format.ts`:
+
+```typescript
+export function formatElapsed(startTimestamp: string): string {
+  const seconds = Math.floor((Date.now() - new Date(startTimestamp).getTime()) / 1000)
+  if (seconds < 0) return "0s"
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`
+}
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `cd dashboard && npx vitest run src/lib/utils/__tests__/format.test.ts`
+Expected: All tests PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add dashboard/src/lib/utils/format.ts dashboard/src/lib/utils/__tests__/format.test.ts
+git commit -m "feat(dashboard): add formatElapsed utility with tests"
+```
+
+---
+
+## Task 4: Registries + Navigation + Tests
 
 **Files:**
 - Modify: `dashboard/src/lib/registry/statuses.ts`
+- Modify: `dashboard/src/lib/registry/__tests__/statuses.test.ts`
 - Modify: `dashboard/src/lib/registry/icons.ts`
 - Modify: `dashboard/src/lib/navigation.ts`
 
-- [ ] **Step 1: Add workspace statuses to the status registry**
+- [ ] **Step 1: Write failing tests for new statuses**
 
-In `dashboard/src/lib/registry/statuses.ts`, update the `statusGroups` array.
-
-Add `"delivered"` to the green group:
+Add to `dashboard/src/lib/registry/__tests__/statuses.test.ts`, inside the existing `describe('getStatusColor')` block:
 
 ```typescript
+  it('maps workspace statuses to colors', () => {
+    expect(getStatusColor('delivered')).toBe('green')
+    expect(getStatusColor('cloning')).toBe('blue')
+    expect(getStatusColor('installing')).toBe('blue')
+    expect(getStatusColor('detecting')).toBe('blue')
+    expect(getStatusColor('stopped_dirty')).toBe('yellow')
+  })
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd dashboard && npx vitest run src/lib/registry/__tests__/statuses.test.ts`
+Expected: FAIL — `delivered` returns `zinc` instead of `green`
+
+- [ ] **Step 3: Add workspace statuses to the status registry**
+
+In `dashboard/src/lib/registry/statuses.ts`, update the `statusGroups` array:
+
+```typescript
+const statusGroups: readonly StatusGroup[] = [
   { color: "green",  statuses: ["completed", "approved", "merged", "healthy", "delivered"] },
-```
-
-Add `"cloning"`, `"installing"`, `"detecting"` to the blue group:
-
-```typescript
   { color: "blue",   statuses: ["active", "busy", "in_progress", "cloning", "installing", "detecting"] },
-```
-
-Add `"stopped_dirty"` to the yellow group:
-
-```typescript
+  { color: "purple", statuses: ["review", "pending_review"] },
   { color: "yellow", statuses: ["blocked", "warning", "degraded", "stopped_dirty"] },
+  { color: "orange", statuses: ["paused", "queued"] },
+  { color: "red",    statuses: ["stopped", "abandoned", "discarded", "failed", "unhealthy"] },
+  { color: "zinc",   statuses: ["idle", "proposed", "unknown"] },
+]
 ```
 
-- [ ] **Step 2: Add Container icon to the icon registry**
+- [ ] **Step 4: Run tests to verify they pass**
 
-In `dashboard/src/lib/registry/icons.ts`, add `Container` to the lucide-react import:
+Run: `cd dashboard && npx vitest run src/lib/registry/__tests__/statuses.test.ts`
+Expected: All tests PASS
+
+- [ ] **Step 5: Add Container icon to icon registry**
+
+In `dashboard/src/lib/registry/icons.ts`, add `Container` to the lucide-react import and the `iconMap`:
 
 ```typescript
 import {
@@ -221,11 +395,8 @@ import {
   Lightbulb, Inbox, PanelLeftOpen, PanelLeftClose, Sun, Moon, Bell,
   Container,
 } from "lucide-react"
-```
+import type { LucideIcon } from "lucide-react"
 
-Add `Container` to the `iconMap` object:
-
-```typescript
 const iconMap: Record<string, LucideIcon> = {
   Bot, Target, CheckSquare, FileCode, Activity, BarChart3, Wallet,
   Circle, Radio, Columns3, DollarSign, ShieldCheck, Timer, HeartPulse,
@@ -234,9 +405,9 @@ const iconMap: Record<string, LucideIcon> = {
 }
 ```
 
-- [ ] **Step 3: Add Workspace to navigation**
+- [ ] **Step 6: Add Workspace to navigation**
 
-In `dashboard/src/lib/navigation.ts`, update the Workflow section to add Workspace as the first item:
+In `dashboard/src/lib/navigation.ts`, update the Workflow section:
 
 ```typescript
   {
@@ -255,60 +426,29 @@ Add to `PAGE_TITLES`:
   "/workspace": "Workspace",
 ```
 
-- [ ] **Step 4: Verify build**
+- [ ] **Step 7: Verify build**
 
 Run: `cd dashboard && npx tsc --noEmit`
 Expected: No type errors
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add dashboard/src/lib/registry/statuses.ts dashboard/src/lib/registry/icons.ts dashboard/src/lib/navigation.ts
-git commit -m "feat(dashboard): add workspace statuses, icon, and navigation entry"
+git add dashboard/src/lib/registry/statuses.ts dashboard/src/lib/registry/__tests__/statuses.test.ts dashboard/src/lib/registry/icons.ts dashboard/src/lib/navigation.ts
+git commit -m "feat(dashboard): add workspace statuses, Container icon, and navigation entry"
 ```
 
 ---
 
-## Task 4: SSE + Layout Shell Integration
+## Task 5: SSE + Layout Shell Integration
 
 **Files:**
 - Modify: `dashboard/src/lib/useSSE.ts`
 - Modify: `dashboard/src/app/layout-shell.tsx`
 
-- [ ] **Step 1: Add workspace events to SSE hook**
+- [ ] **Step 1: Update SSE hook with workspace events**
 
-In `dashboard/src/lib/useSSE.ts`, add import for workspace store and API:
-
-```typescript
-import { useWorkspaceStore } from "./workspace-store"
-import { api } from "./api"
-```
-
-Add workspace store selectors after the existing selectors (after line 9):
-
-```typescript
-  const setWorkspaceStatus = useWorkspaceStore((s) => s.setStatus)
-  const clearWorkspace = useWorkspaceStore((s) => s.clear)
-```
-
-Add workspace event types to the `refreshTypes` set inside `source.onmessage` (after the existing set):
-
-```typescript
-      const workspaceRefreshTypes = new Set([
-        "workspace.status.changed",
-        "workspace.goal.delivered",
-        "workspace.goal.failed",
-      ])
-      if (workspaceRefreshTypes.has(data.type)) {
-        api.workspaceStatus()
-          .then(setWorkspaceStatus)
-          .catch(() => clearWorkspace())
-      }
-```
-
-Add `setWorkspaceStatus` and `clearWorkspace` to the `useEffect` dependency array.
-
-The full updated `useSSE.ts` should be:
+Replace `dashboard/src/lib/useSSE.ts` with:
 
 ```typescript
 "use client"
@@ -319,13 +459,24 @@ import { useWorkspaceStore } from "./workspace-store"
 import { api } from "./api"
 import type { SSEEvent } from "./types"
 
+const DASHBOARD_REFRESH_TYPES = new Set([
+  "goal.created", "goal.completed", "goal.abandoned",
+  "task.created", "task.assigned", "task.completed", "task.failed",
+  "review.approved", "review.rejected",
+  "branch.merged", "branch.discarded",
+])
+
+const WORKSPACE_REFRESH_TYPES = new Set([
+  "workspace.status.changed",
+  "workspace.goal.delivered",
+  "workspace.goal.failed",
+])
+
 export function useSSE() {
   const handleSSEEvent = useDashboardStore((s) => s.handleSSEEvent)
   const fetchLiveFloor = useDashboardStore((s) => s.fetchLiveFloor)
   const fetchPipeline = useDashboardStore((s) => s.fetchPipeline)
   const fetchMetrics = useDashboardStore((s) => s.fetchMetrics)
-  const setWorkspaceStatus = useWorkspaceStore((s) => s.setStatus)
-  const clearWorkspace = useWorkspaceStore((s) => s.clear)
   const sourceRef = useRef<EventSource | null>(null)
 
   useEffect(() => {
@@ -340,26 +491,15 @@ export function useSSE() {
     source.onmessage = (event) => {
       const data = JSON.parse(event.data) as SSEEvent
       handleSSEEvent(data)
-      const refreshTypes = new Set([
-        "goal.created", "goal.completed", "goal.abandoned",
-        "task.created", "task.assigned", "task.completed", "task.failed",
-        "review.approved", "review.rejected",
-        "branch.merged", "branch.discarded",
-      ])
-      if (refreshTypes.has(data.type)) {
+      if (DASHBOARD_REFRESH_TYPES.has(data.type)) {
         void fetchLiveFloor()
         void fetchPipeline()
         void fetchMetrics()
       }
-      const workspaceRefreshTypes = new Set([
-        "workspace.status.changed",
-        "workspace.goal.delivered",
-        "workspace.goal.failed",
-      ])
-      if (workspaceRefreshTypes.has(data.type)) {
+      if (WORKSPACE_REFRESH_TYPES.has(data.type)) {
         api.workspaceStatus()
-          .then(setWorkspaceStatus)
-          .catch(() => clearWorkspace())
+          .then(useWorkspaceStore.getState().setStatus)
+          .catch(() => useWorkspaceStore.getState().clear())
       }
     }
 
@@ -371,30 +511,17 @@ export function useSSE() {
       source.close()
       sourceRef.current = null
     }
-  }, [handleSSEEvent, fetchLiveFloor, fetchPipeline, fetchMetrics, setWorkspaceStatus, clearWorkspace])
+  }, [handleSSEEvent, fetchLiveFloor, fetchPipeline, fetchMetrics])
 }
 ```
 
+Note: `setWorkspaceStatus` and `clearWorkspace` are accessed via `getState()` inside the callback, not as selectors — no need to add them to the dependency array. This matches how `useUIStore.getState()` is already used in this hook.
+
+The `Set` constants are now module-level — allocated once, not per message.
+
 - [ ] **Step 2: Add initial workspace fetch to layout shell**
 
-In `dashboard/src/app/layout-shell.tsx`, add imports:
-
-```typescript
-import { useWorkspaceStore } from "@/lib/workspace-store"
-import { api } from "@/lib/api"
-```
-
-Add a `useEffect` after the existing theme effects (after line 22) that fetches workspace status on mount:
-
-```typescript
-  useEffect(() => {
-    api.workspaceStatus()
-      .then(useWorkspaceStore.getState().setStatus)
-      .catch(() => useWorkspaceStore.getState().clear())
-  }, [])
-```
-
-The full updated `layout-shell.tsx`:
+Replace `dashboard/src/app/layout-shell.tsx` with:
 
 ```typescript
 "use client"
@@ -439,6 +566,8 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
 }
 ```
 
+Note: The 404 from `workspaceStatus()` when no workspace exists is caught and calls `clear()`. This is expected on every clean app load — not a bug. The `get()` helper throws on non-OK responses, so 404 becomes a caught error. Functionally correct.
+
 - [ ] **Step 3: Verify build**
 
 Run: `cd dashboard && npx tsc --noEmit`
@@ -453,7 +582,7 @@ git commit -m "feat(dashboard): wire SSE workspace events + initial fetch on mou
 
 ---
 
-## Task 5: WorkspaceRequiredNotice Component
+## Task 6: WorkspaceRequiredNotice Component
 
 **Files:**
 - Create: `dashboard/src/components/composites/workspace-required-notice.tsx`
@@ -498,7 +627,7 @@ git commit -m "feat(dashboard): add WorkspaceRequiredNotice component"
 
 ---
 
-## Task 6: WorkspaceSetupForm Component
+## Task 7: WorkspaceSetupForm Component
 
 **Files:**
 - Create: `dashboard/src/components/composites/workspace-setup-form.tsx`
@@ -658,7 +787,7 @@ git commit -m "feat(dashboard): add WorkspaceSetupForm with validation and local
 
 ---
 
-## Task 7: WorkspaceBootProgress Component
+## Task 8: WorkspaceBootProgress Component
 
 **Files:**
 - Create: `dashboard/src/components/composites/workspace-boot-progress.tsx`
@@ -670,7 +799,7 @@ Create `dashboard/src/components/composites/workspace-boot-progress.tsx`:
 ```typescript
 import type { WorkspaceRunStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { formatTimeAgo } from "@/lib/utils/format"
+import { formatElapsed } from "@/lib/utils/format"
 
 const BOOT_PHASES = [
   { status: "cloning" as const, label: "Cloning" },
@@ -734,7 +863,7 @@ export function WorkspaceBootProgress({ status, repoUrl, startedAt }: WorkspaceB
           })}
         </div>
 
-        <p className="text-xs text-text-muted">Started {formatTimeAgo(startedAt)}</p>
+        <p className="text-xs text-text-muted">Elapsed: {formatElapsed(startedAt)}</p>
       </div>
     </div>
   )
@@ -755,7 +884,7 @@ git commit -m "feat(dashboard): add WorkspaceBootProgress stepper component"
 
 ---
 
-## Task 8: WorkspaceGoalLog Component
+## Task 9: WorkspaceGoalLog Component
 
 **Files:**
 - Create: `dashboard/src/components/composites/workspace-goal-log.tsx`
@@ -844,12 +973,12 @@ git commit -m "feat(dashboard): add WorkspaceGoalLog component"
 
 ---
 
-## Task 9: Workspace Page
+## Task 10: Workspace Page — Shell + State Machine
 
 **Files:**
 - Create: `dashboard/src/app/workspace/page.tsx`
 
-- [ ] **Step 1: Create the workspace page**
+- [ ] **Step 1: Create the workspace page with setup + boot + failed states**
 
 Create `dashboard/src/app/workspace/page.tsx`:
 
@@ -864,7 +993,7 @@ import { WorkspaceBootProgress } from "@/components/composites/workspace-boot-pr
 import { WorkspaceGoalLog } from "@/components/composites/workspace-goal-log"
 import { MetricValue } from "@/components/primitives/metric-value"
 import { StatusBadge } from "@/components/primitives/status-badge"
-import { formatTimeAgo } from "@/lib/utils/format"
+import { formatElapsed } from "@/lib/utils/format"
 import { useState } from "react"
 
 const BOOT_STATUSES = new Set(["created", "cloning", "installing", "detecting"])
@@ -876,6 +1005,8 @@ export default function WorkspacePage() {
   const setStatus = useWorkspaceStore((s) => s.setStatus)
   const clear = useWorkspaceStore((s) => s.clear)
   const [stopError, setStopError] = useState<string | null>(null)
+  const [stopping, setStopping] = useState(false)
+  const [cleaning, setCleaning] = useState(false)
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -889,20 +1020,29 @@ export default function WorkspacePage() {
   usePolling(fetchStatus)
 
   const handleStop = async () => {
+    setStopping(true)
     setStopError(null)
     try {
       await api.workspaceStop()
       await fetchStatus()
     } catch (err) {
       setStopError(err instanceof Error ? err.message : "Failed to stop workspace")
+    } finally {
+      setStopping(false)
     }
   }
 
   const handleCleanup = async () => {
+    setCleaning(true)
     try {
       await api.workspaceCleanup()
       clear()
-    } catch { /* cleanup failure shown by re-fetch */ }
+    } catch {
+      // cleanup failure — re-fetch will show current state
+      await fetchStatus()
+    } finally {
+      setCleaning(false)
+    }
   }
 
   const status = run?.status
@@ -935,15 +1075,14 @@ export default function WorkspacePage() {
         <div className="rounded-lg border border-status-yellow-border bg-status-yellow-surface p-4 flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-text-primary">Workspace stopped with failed goals</p>
-            <p className="text-xs text-text-secondary mt-1">
-              Clone preserved for debugging
-            </p>
+            <p className="text-xs text-text-secondary mt-1">Clone preserved for debugging</p>
           </div>
           <button
             onClick={handleCleanup}
-            className="px-3 py-1.5 rounded-md text-xs font-medium bg-red-600 text-white hover:bg-red-500"
+            disabled={cleaning}
+            className="px-3 py-1.5 rounded-md text-xs font-medium bg-red-600 text-white hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Cleanup
+            {cleaning ? "Cleaning..." : "Cleanup"}
           </button>
         </div>
         <WorkspaceGoalLog goalSummaries={goalSummaries} />
@@ -974,9 +1113,10 @@ export default function WorkspacePage() {
           )}
           <button
             onClick={handleStop}
-            className="px-3 py-1.5 rounded-md text-xs font-medium bg-red-900 text-red-300 hover:bg-red-800"
+            disabled={stopping}
+            className="px-3 py-1.5 rounded-md text-xs font-medium bg-red-900 text-red-300 hover:bg-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Stop Workspace
+            {stopping ? "Stopping..." : "Stop Workspace"}
           </button>
         </div>
       </div>
@@ -995,7 +1135,7 @@ export default function WorkspacePage() {
         <div className="rounded-lg border border-border bg-card p-4">
           <span className="text-xs uppercase tracking-wider text-text-secondary">Uptime</span>
           <p className="font-mono text-2xl font-bold text-text-primary mt-1">
-            {formatTimeAgo(run.startedAt).replace(" ago", "")}
+            {formatElapsed(run.startedAt)}
           </p>
         </div>
       </div>
@@ -1016,23 +1156,19 @@ Expected: No type errors
 
 ```bash
 git add dashboard/src/app/workspace/page.tsx
-git commit -m "feat(dashboard): add /workspace page with 4-state state machine"
+git commit -m "feat(dashboard): add /workspace page with 4-state machine"
 ```
 
 ---
 
-## Task 10: CreateGoalForm Prop + Live Floor + Goals Page Integration
+## Task 11: CreateGoalForm — Add workspaceRepoName Prop
 
 **Files:**
 - Modify: `dashboard/src/components/composites/create-goal-form.tsx`
-- Modify: `dashboard/src/app/page.tsx`
-- Modify: `dashboard/src/app/goals/page.tsx`
 
-- [ ] **Step 1: Add `workspaceRepoName` prop to CreateGoalForm**
+- [ ] **Step 1: Update CreateGoalForm to accept workspaceRepoName prop**
 
-In `dashboard/src/components/composites/create-goal-form.tsx`, update the component signature and add the targeting indicator.
-
-Replace the entire file with:
+Replace `dashboard/src/components/composites/create-goal-form.tsx` with:
 
 ```typescript
 "use client"
@@ -1106,7 +1242,26 @@ export function CreateGoalForm({ workspaceRepoName }: CreateGoalFormProps) {
 }
 ```
 
-- [ ] **Step 2: Update Live Floor page with workspace banners + goal gate**
+- [ ] **Step 2: Verify build**
+
+Run: `cd dashboard && npx tsc --noEmit`
+Expected: No type errors
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add dashboard/src/components/composites/create-goal-form.tsx
+git commit -m "feat(dashboard): add workspaceRepoName prop to CreateGoalForm"
+```
+
+---
+
+## Task 12: Live Floor Page — Workspace Banners + Goal Gate
+
+**Files:**
+- Modify: `dashboard/src/app/page.tsx`
+
+- [ ] **Step 1: Update Live Floor with workspace banners and goal gate**
 
 Replace `dashboard/src/app/page.tsx` with:
 
@@ -1186,7 +1341,26 @@ export default function LiveFloorPage() {
 }
 ```
 
-- [ ] **Step 3: Update Goals page with workspace gate**
+- [ ] **Step 2: Verify build**
+
+Run: `cd dashboard && npx tsc --noEmit`
+Expected: No type errors
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add dashboard/src/app/page.tsx
+git commit -m "feat(dashboard): add workspace banners and goal gate to Live Floor"
+```
+
+---
+
+## Task 13: Goals Page — Workspace Gate
+
+**Files:**
+- Modify: `dashboard/src/app/goals/page.tsx`
+
+- [ ] **Step 1: Update Goals page with workspace gate**
 
 Replace `dashboard/src/app/goals/page.tsx` with:
 
@@ -1228,28 +1402,33 @@ export default function GoalsPage() {
 }
 ```
 
-- [ ] **Step 4: Verify build**
+- [ ] **Step 2: Verify build**
 
 Run: `cd dashboard && npx tsc --noEmit`
 Expected: No type errors
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add dashboard/src/components/composites/create-goal-form.tsx dashboard/src/app/page.tsx dashboard/src/app/goals/page.tsx
-git commit -m "feat(dashboard): integrate workspace banners, goal-form gating, and targeting indicator"
+git add dashboard/src/app/goals/page.tsx
+git commit -m "feat(dashboard): add workspace gate to Goals page"
 ```
 
 ---
 
-## Task 11: Final Verification
+## Task 14: Final Verification
 
-- [ ] **Step 1: Full type check**
+- [ ] **Step 1: Run all tests**
+
+Run: `cd dashboard && npx vitest run`
+Expected: All tests pass (existing + new store + format tests)
+
+- [ ] **Step 2: Full type check**
 
 Run: `cd dashboard && npx tsc --noEmit`
 Expected: No type errors
 
-- [ ] **Step 2: Dev server smoke test**
+- [ ] **Step 3: Dev server smoke test**
 
 Run: `cd dashboard && npm run dev`
 
@@ -1260,4 +1439,4 @@ Verify in browser:
 - Live Floor shows `WorkspaceRequiredNotice` instead of goal form
 - Goals page shows `WorkspaceRequiredNotice` instead of goal form
 
-- [ ] **Step 3: Stop dev server and commit any fixes if needed**
+- [ ] **Step 4: Stop dev server and commit any fixes if needed**
