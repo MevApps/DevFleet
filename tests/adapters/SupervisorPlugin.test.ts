@@ -79,6 +79,15 @@ describe("SupervisorPlugin", () => {
 })
 
 function createTestPlugin(overrides: Partial<SupervisorPluginDeps> = {}): SupervisorPlugin {
+  const mockDetectProjectConfig = {
+    execute: jest.fn().mockResolvedValue({
+      language: "typescript",
+      buildCommand: "npm run build",
+      testCommand: "npm test",
+      sourceRoots: ["src"],
+    }),
+  }
+
   const defaults: SupervisorPluginDeps = {
     agentId: createAgentId("supervisor-1"),
     projectId: "proj-1" as any,
@@ -92,6 +101,7 @@ function createTestPlugin(overrides: Partial<SupervisorPluginDeps> = {}): Superv
     evaluateKeepDiscard: { execute: async () => success("keep" as const) } as any,
     mergeBranch: { execute: async () => success("abc") } as any,
     discardBranch: { execute: async () => success(undefined) } as any,
+    detectProjectConfig: mockDetectProjectConfig as any,
     pipelineConfig: createPipelineConfig({
       phases: ["spec", "plan", "code", "review"],
       transitions: [{ from: "spec", to: "plan" }, { from: "plan", to: "code" }, { from: "code", to: "review" }],

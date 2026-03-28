@@ -14,6 +14,7 @@ import type { PromptAgent } from "../../../use-cases/PromptAgent"
 import type { EvaluateKeepDiscard } from "../../../use-cases/EvaluateKeepDiscard"
 import type { MergeBranch } from "../../../use-cases/MergeBranch"
 import type { DiscardBranch } from "../../../use-cases/DiscardBranch"
+import type { DetectProjectConfig } from "../../../use-cases/DetectProjectConfig"
 import { createBudget } from "../../../entities/Budget"
 import { ROLES } from "../../../entities/AgentRole"
 
@@ -34,6 +35,7 @@ export interface SupervisorPluginDeps {
   readonly maxRetries: number
   readonly model: string
   readonly systemPrompt: string
+  readonly detectProjectConfig: DetectProjectConfig
 }
 
 export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
@@ -86,6 +88,16 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
   }
 
   private async handleGoalCreated(goalId: GoalId, description: string): Promise<void> {
+    // Detect project configuration
+    const config = await this.deps.detectProjectConfig.execute()
+    await this.deps.bus.emit({
+      id: createMessageId(),
+      type: "project.detected",
+      projectId: this.deps.projectId,
+      config,
+      timestamp: new Date(),
+    })
+
     // Use AI to decompose the goal into tasks
     const prompt = {
       systemPrompt: this.deps.systemPrompt,

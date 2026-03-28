@@ -1,28 +1,29 @@
-import { exec } from "node:child_process"
-import { promisify } from "node:util"
+import { execFile } from "node:child_process"
 import type { ShellExecutor, ShellResult } from "../../use-cases/ports/ShellExecutor"
-
-const execAsync = promisify(exec)
 
 const DEFAULT_TIMEOUT_MS = 30_000
 
 export class NodeShellExecutor implements ShellExecutor {
   constructor(private readonly cwd: string = process.cwd()) {}
 
-  async execute(command: string, timeout?: number): Promise<ShellResult> {
-    try {
-      const { stdout, stderr } = await execAsync(command, {
-        cwd: this.cwd,
-        timeout: timeout ?? DEFAULT_TIMEOUT_MS,
-      })
-      return { stdout, stderr, exitCode: 0 }
-    } catch (err) {
-      const error = err as { stdout?: string; stderr?: string; code?: number }
-      return {
-        stdout: error.stdout ?? "",
-        stderr: error.stderr ?? String(err),
-        exitCode: error.code ?? 1,
-      }
-    }
+  execute(command: string, args: readonly string[], timeout?: number): Promise<ShellResult> {
+    return new Promise((resolve) => {
+      execFile(
+        command,
+        args as string[],
+        { cwd: this.cwd, timeout: timeout ?? DEFAULT_TIMEOUT_MS },
+        (err, stdout, stderr) => {
+          if (err === null) {
+            resolve({ stdout, stderr, exitCode: 0 })
+          } else {
+            resolve({
+              stdout: err.killed ? "" : (stdout ?? ""),
+              stderr: err.killed ? `Process timed out after ${timeout ?? DEFAULT_TIMEOUT_MS}ms` : (stderr ?? String(err)),
+              exitCode: typeof err.code === "number" ? err.code : 1,
+            })
+          }
+        },
+      )
+    })
   }
 }

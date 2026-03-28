@@ -100,7 +100,7 @@ const mockFs: FileSystem = {
 // Mock ShellExecutor: no-op
 // ---------------------------------------------------------------------------
 const mockShell: ShellExecutor = {
-  async execute(_command: string, _timeout?: number) {
+  async execute(_command: string, _args: readonly string[], _timeout?: number) {
     return { stdout: "", stderr: "", exitCode: 0 }
   },
 }
@@ -162,6 +162,14 @@ describe("End-to-end integration: Developer agent writes a file", () => {
       taskRepo,
     )
 
+    const mockWorktree = {
+      create: jest.fn().mockResolvedValue("/tmp/integration-worktree"),
+      delete: jest.fn().mockResolvedValue(undefined),
+      merge: jest.fn().mockResolvedValue({ success: true as const, commit: "abc" }),
+      exists: jest.fn().mockResolvedValue(false),
+      cleanupAll: jest.fn().mockResolvedValue(undefined),
+    }
+
     const devPlugin = new DeveloperPlugin({
       agentId,
       projectId,
@@ -170,6 +178,8 @@ describe("End-to-end integration: Developer agent writes a file", () => {
       systemPrompt: "You are a developer",
       model: "claude-test",
       bus,
+      worktreeManager: mockWorktree,
+      scopedExecutorFactory: () => agentExecutor,
     })
 
     // Trigger via task.assigned message

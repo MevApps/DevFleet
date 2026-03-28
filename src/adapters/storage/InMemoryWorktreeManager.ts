@@ -24,4 +24,8 @@ export class InMemoryWorktreeManager implements WorktreeManager {
   async exists(branch: string): Promise<boolean> {
     return this.branches.has(branch)
   }
+
+  async cleanupAll(): Promise<void> {
+    this.branches.clear()
+  }
 }

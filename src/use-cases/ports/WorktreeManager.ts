@@ -9,4 +9,5 @@ export interface WorktreeManager {
   delete(branch: string): Promise<void>
   merge(branch: string, targetBranch?: string): Promise<MergeResult>
   exists(branch: string): Promise<boolean>
+  cleanupAll(): Promise<void>
 }

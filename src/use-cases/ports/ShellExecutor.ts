@@ -5,7 +5,7 @@ export interface ShellResult {
 }
 
 export interface ShellExecutor {
-  execute(command: string, timeout?: number): Promise<ShellResult>
+  execute(command: string, args: readonly string[], timeout?: number): Promise<ShellResult>
 }
 
 export type ShellExecutorFactory = (rootPath: string) => ShellExecutor

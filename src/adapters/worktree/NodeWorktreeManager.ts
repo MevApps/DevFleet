@@ -13,25 +13,25 @@ export class NodeWorktreeManager implements WorktreeManager {
   async create(branch: string, baseBranch?: string): Promise<WorktreePath> {
     const worktreePath = this.worktreePath(branch)
     const base = baseBranch ?? "HEAD"
-    await this.shell.execute(`git worktree add -b "${branch}" "${worktreePath}" ${base}`)
+    await this.shell.execute("git", ["worktree", "add", "-b", branch, worktreePath, base])
     return worktreePath
   }
 
   async delete(branch: string): Promise<void> {
     const worktreePath = this.worktreePath(branch)
-    await this.shell.execute(`git worktree remove "${worktreePath}" --force`)
-    await this.shell.execute(`git branch -D "${branch}"`)
+    await this.shell.execute("git", ["worktree", "remove", worktreePath, "--force"])
+    await this.shell.execute("git", ["branch", "-D", branch])
   }
 
   async merge(branch: string, _targetBranch?: string): Promise<MergeResult> {
     try {
-      await this.shell.execute(`git merge "${branch}" --no-edit`)
-      const commitResult = await this.shell.execute("git rev-parse HEAD")
+      await this.shell.execute("git", ["merge", branch, "--no-edit"])
+      const commitResult = await this.shell.execute("git", ["rev-parse", "HEAD"])
       const commit = commitResult.stdout.trim()
 
       const worktreePath = this.worktreePath(branch)
-      await this.shell.execute(`git worktree remove "${worktreePath}" --force`).catch(() => {})
-      await this.shell.execute(`git branch -D "${branch}"`).catch(() => {})
+      await this.shell.execute("git", ["worktree", "remove", worktreePath, "--force"]).catch(() => {})
+      await this.shell.execute("git", ["branch", "-D", branch]).catch(() => {})
 
       return { success: true, commit }
     } catch (err) {
@@ -42,10 +42,27 @@ export class NodeWorktreeManager implements WorktreeManager {
 
   async exists(branch: string): Promise<boolean> {
     try {
-      const result = await this.shell.execute("git worktree list --porcelain")
+      const result = await this.shell.execute("git", ["worktree", "list", "--porcelain"])
       return result.stdout.includes(branch)
     } catch {
       return false
+    }
+  }
+
+  async cleanupAll(): Promise<void> {
+    try {
+      const result = await this.shell.execute("git", ["worktree", "list", "--porcelain"])
+      const worktreePaths = result.stdout
+        .split("\n")
+        .filter(line => line.startsWith("worktree "))
+        .map(line => line.replace("worktree ", ""))
+        .filter(p => p.includes(WORKTREES_DIR))
+
+      for (const wt of worktreePaths) {
+        await this.shell.execute("git", ["worktree", "remove", wt, "--force"]).catch(() => {})
+      }
+    } catch {
+      // Best-effort cleanup
     }
   }
 

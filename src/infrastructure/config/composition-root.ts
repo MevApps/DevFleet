@@ -5,6 +5,7 @@ import { InMemoryEventStore } from "../../adapters/storage/InMemoryEventStore"
 import { InMemoryMetricRecorder } from "../../adapters/storage/InMemoryMetricRecorder"
 import { InMemoryArtifactRepo } from "../../adapters/storage/InMemoryArtifactRepo"
 import { InMemoryWorktreeManager } from "../../adapters/storage/InMemoryWorktreeManager"
+import { NodeWorktreeManager } from "../../adapters/worktree/NodeWorktreeManager"
 import { InMemoryKeepDiscardRepository } from "../../adapters/storage/InMemoryKeepDiscardRepository"
 import { InMemoryInsightRepository } from "../../adapters/storage/InMemoryInsightRepository"
 import { InMemoryBudgetConfigStore } from "../../adapters/storage/InMemoryBudgetConfigStore"
@@ -45,6 +46,7 @@ import { ComputeQualityMetrics } from "../../use-cases/ComputeQualityMetrics"
 import { ComputePhaseTimings } from "../../use-cases/ComputePhaseTimings"
 import { AcceptInsight } from "../../use-cases/AcceptInsight"
 import { DismissInsight } from "../../use-cases/DismissInsight"
+import { DetectProjectConfig } from "../../use-cases/DetectProjectConfig"
 import { EvaluateAlert, type AlertRule } from "../../use-cases/EvaluateAlert"
 import { LiveFloorPresenter } from "../../adapters/presenters/LiveFloorPresenter"
 import { PipelinePresenter } from "../../adapters/presenters/PipelinePresenter"
@@ -213,7 +215,7 @@ function createMockFileSystem(): FileSystem {
 
 function createMockShell(): ShellExecutor {
   return {
-    async execute(_command: string, _timeout?: number) {
+    async execute(_command: string, _args: readonly string[], _timeout?: number) {
       return { stdout: "10 passed, 0 failed", stderr: "", exitCode: 0 }
     },
   }
@@ -267,14 +269,18 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const fileSystem: FileSystem = useMock ? createMockFileSystem() : new NodeFileSystem(config.workspaceDir)
   const shell: ShellExecutor = useMock ? createMockShell() : new NodeShellExecutor(config.workspaceDir)
 
+  const detectProjectConfig = new DetectProjectConfig(fileSystem)
+
   const ai: AICompletionProvider & AIToolProvider = useMock
     ? new MockAIProvider()
     : new ClaudeProvider(config.anthropicApiKey)
 
   // -------------------------------------------------------------------------
-  // 3. Worktree manager (in-memory for now)
+  // 3. Worktree manager (in-memory for test, NodeWorktreeManager for production)
   // -------------------------------------------------------------------------
-  const worktreeManager = new InMemoryWorktreeManager()
+  const worktreeManager = useMock
+    ? new InMemoryWorktreeManager()
+    : new NodeWorktreeManager(shell, config.workspaceDir)
 
   // -------------------------------------------------------------------------
   // 4. Use cases
@@ -416,6 +422,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     maxRetries,
     model: supervisorModel,
     systemPrompt: supervisorPrompt,
+    detectProjectConfig,
   })
 
   const productPlugin = new ProductPlugin({
@@ -581,6 +588,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
         clearInterval(stuckAgentInterval)
         stuckAgentInterval = null
       }
+      await worktreeManager.cleanupAll()
       sseManager.shutdown()
       await pluginRegistry.stopAll()
     },

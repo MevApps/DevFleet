@@ -37,16 +37,36 @@ describe("DeveloperPlugin", () => {
 
   let taskRepo: InMemoryTaskRepo
   let mockExecutor: jest.Mocked<AgentExecutor>
+  let bus: InMemoryBus
+  let mockWorktree: {
+    create: jest.Mock
+    delete: jest.Mock
+    merge: jest.Mock
+    exists: jest.Mock
+    cleanupAll: jest.Mock
+  }
+  let mockScopedFactory: jest.Mock
   let plugin: DeveloperPlugin
 
   beforeEach(() => {
     taskRepo = new InMemoryTaskRepo()
+    bus = new InMemoryBus()
 
     // Create an async generator mock
     async function* emptyGen(): AsyncIterable<AgentEvent> {}
     mockExecutor = {
       run: jest.fn().mockReturnValue(emptyGen()),
     }
+
+    mockWorktree = {
+      create: jest.fn().mockResolvedValue("/tmp/mock-worktree"),
+      delete: jest.fn().mockResolvedValue(undefined),
+      merge: jest.fn().mockResolvedValue({ success: true, commit: "abc" }),
+      exists: jest.fn().mockResolvedValue(false),
+      cleanupAll: jest.fn().mockResolvedValue(undefined),
+    }
+
+    mockScopedFactory = jest.fn().mockReturnValue(mockExecutor)
 
     plugin = new DeveloperPlugin({
       agentId,
@@ -55,6 +75,9 @@ describe("DeveloperPlugin", () => {
       taskRepo,
       systemPrompt: "You are a developer",
       model: "claude-3-5-sonnet-20241022",
+      bus,
+      worktreeManager: mockWorktree,
+      scopedExecutorFactory: mockScopedFactory,
     })
   })
 
@@ -79,7 +102,7 @@ describe("DeveloperPlugin", () => {
   })
 
   describe("handle", () => {
-    it("delegates to executor when message is for this agent", async () => {
+    it("delegates to scoped executor when message is for this agent", async () => {
       const task = makeTask()
       await taskRepo.create(task)
 
@@ -87,10 +110,12 @@ describe("DeveloperPlugin", () => {
         yield { type: "task_completed", data: {} }
       }
       mockExecutor.run.mockReturnValue(gen())
+      mockScopedFactory.mockReturnValue(mockExecutor)
 
       const msg = makeAssignedMsg(task.id, agentId)
       await plugin.handle(msg)
 
+      expect(mockScopedFactory).toHaveBeenCalledWith("/tmp/mock-worktree")
       expect(mockExecutor.run).toHaveBeenCalledTimes(1)
       expect(mockExecutor.run).toHaveBeenCalledWith(
         agentId,
@@ -149,6 +174,7 @@ describe("DeveloperPlugin", () => {
         }
       }
       mockExecutor.run.mockReturnValue(trackingGen())
+      mockScopedFactory.mockReturnValue(mockExecutor)
 
       await plugin.handle(makeAssignedMsg(task.id, agentId))
 
@@ -183,7 +209,6 @@ describe("DeveloperPlugin", () => {
 
   describe("bus emission", () => {
     it("emits code.completed (not task.completed) when executor completes", async () => {
-      const bus = new InMemoryBus()
       const emitted: Message[] = []
       bus.subscribe({}, async (msg) => { emitted.push(msg) })
 
@@ -194,18 +219,9 @@ describe("DeveloperPlugin", () => {
         yield { type: "task_completed", data: {} }
       }
       mockExecutor.run.mockReturnValue(gen())
+      mockScopedFactory.mockReturnValue(mockExecutor)
 
-      const pluginWithBus = new DeveloperPlugin({
-        agentId,
-        projectId,
-        executor: mockExecutor,
-        taskRepo,
-        systemPrompt: "You are a developer",
-        model: "claude-3-5-sonnet-20241022",
-        bus,
-      })
-
-      await pluginWithBus.handle(makeAssignedMsg(task.id, agentId))
+      await plugin.handle(makeAssignedMsg(task.id, agentId))
 
       expect(emitted).toHaveLength(1)
       expect(emitted[0]?.type).toBe("code.completed")
@@ -229,17 +245,18 @@ describe("DeveloperPlugin – worktree isolation", () => {
     })
     await taskRepo.create(task)
 
-    let worktreeCreated = false
-    let createdBranch: string | null = null
     const mockWorktree = {
-      create: async (branch: string) => { worktreeCreated = true; createdBranch = branch; return `/tmp/${branch}` },
-      delete: async () => {},
-      merge: async () => ({ success: true as const, commit: "abc" }),
-      exists: async () => false,
+      create: jest.fn().mockImplementation(async (branch: string) => `/tmp/${branch}`),
+      delete: jest.fn().mockResolvedValue(undefined),
+      merge: jest.fn().mockResolvedValue({ success: true as const, commit: "abc" }),
+      exists: jest.fn().mockResolvedValue(false),
+      cleanupAll: jest.fn().mockResolvedValue(undefined),
     }
 
     async function* emptyGen(): AsyncIterable<AgentEvent> {}
     const mockExecutor: jest.Mocked<AgentExecutor> = { run: jest.fn().mockReturnValue(emptyGen()) }
+    const mockScopedFactory = jest.fn().mockReturnValue(mockExecutor)
+    const bus = new InMemoryBus()
 
     const pluginWithWorktree = new DeveloperPlugin({
       agentId,
@@ -248,7 +265,9 @@ describe("DeveloperPlugin – worktree isolation", () => {
       taskRepo,
       systemPrompt: "You are a developer",
       model: "claude-3-5-sonnet-20241022",
+      bus,
       worktreeManager: mockWorktree,
+      scopedExecutorFactory: mockScopedFactory,
     })
 
     await pluginWithWorktree.handle({
@@ -259,10 +278,65 @@ describe("DeveloperPlugin – worktree isolation", () => {
       timestamp: new Date(),
     })
 
-    expect(worktreeCreated).toBe(true)
+    expect(mockWorktree.create).toHaveBeenCalledTimes(1)
+    const createdBranch = mockWorktree.create.mock.calls[0]?.[0] as string
     expect(createdBranch).toContain("t-wt")
 
     const updatedTask = await taskRepo.findById(task.id)
     expect(updatedTask?.branch).toBe(createdBranch)
+
+    // scoped executor is always used — factory is called with the worktree path
+    expect(mockScopedFactory).toHaveBeenCalledWith(`/tmp/${createdBranch}`)
+  })
+
+  it("always creates a worktree for every task.assigned handle call", async () => {
+    const agentId = createAgentId("dev-always")
+    const projectId = createProjectId("proj-always")
+    const taskRepo = new InMemoryTaskRepo()
+    const bus = new InMemoryBus()
+
+    const mockWorktree = {
+      create: jest.fn().mockResolvedValue("/tmp/mock-worktree"),
+      delete: jest.fn().mockResolvedValue(undefined),
+      merge: jest.fn().mockResolvedValue({ success: true as const, commit: "abc" }),
+      exists: jest.fn().mockResolvedValue(false),
+      cleanupAll: jest.fn().mockResolvedValue(undefined),
+    }
+
+    async function* emptyGen(): AsyncIterable<AgentEvent> {}
+    const mockExecutor: jest.Mocked<AgentExecutor> = { run: jest.fn().mockReturnValue(emptyGen()) }
+    const mockScopedFactory = jest.fn().mockReturnValue(mockExecutor)
+
+    const plugin = new DeveloperPlugin({
+      agentId,
+      projectId,
+      executor: mockExecutor,
+      taskRepo,
+      systemPrompt: "You are a developer",
+      model: "claude-3-5-sonnet-20241022",
+      bus,
+      worktreeManager: mockWorktree,
+      scopedExecutorFactory: mockScopedFactory,
+    })
+
+    // Handle two separate tasks
+    for (const suffix of ["a", "b"]) {
+      const t = createTask({
+        id: createTaskId(`t-${suffix}`),
+        goalId: createGoalId("g1"),
+        description: `Task ${suffix}`,
+        phase: "dev",
+        budget: createBudget({ maxTokens: 1000, maxCostUsd: 1.0 }),
+        status: "in_progress",
+        version: 1,
+      })
+      await taskRepo.create(t)
+      mockExecutor.run.mockReturnValue(emptyGen())
+      mockScopedFactory.mockReturnValue(mockExecutor)
+      await plugin.handle({ id: createMessageId(), type: "task.assigned", taskId: t.id, agentId, timestamp: new Date() })
+    }
+
+    expect(mockWorktree.create).toHaveBeenCalledTimes(2)
+    expect(mockScopedFactory).toHaveBeenCalledTimes(2)
   })
 })
