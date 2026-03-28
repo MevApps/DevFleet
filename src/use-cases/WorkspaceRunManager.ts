@@ -1,6 +1,6 @@
 import type { WorkspaceRunRepository } from "./ports/WorkspaceRunRepository"
 import type { WorkspaceIsolator, WorkspaceHandle } from "./ports/WorkspaceIsolator"
-import type { FileSystem, FileSystemFactory } from "./ports/FileSystem"
+import type { FileSystemFactory } from "./ports/FileSystem"
 import type { GitRemote } from "./ports/GitRemote"
 import type { PullRequestCreator } from "./ports/PullRequestCreator"
 import type { Unsubscribe } from "./ports/MessagePort"

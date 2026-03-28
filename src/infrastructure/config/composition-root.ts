@@ -50,6 +50,9 @@ import { DismissInsight } from "../../use-cases/DismissInsight"
 import { DetectProjectConfig } from "../../use-cases/DetectProjectConfig"
 import { EvaluateAlert, type AlertRule } from "../../use-cases/EvaluateAlert"
 import { WorkspaceRunManager } from "../../use-cases/WorkspaceRunManager"
+import { GitCloneIsolator } from "../../adapters/workspace/GitCloneIsolator"
+import { NodeGitRemote } from "../../adapters/git/NodeGitRemote"
+import { GitHubPullRequestCreator } from "../../adapters/git/GitHubPullRequestCreator"
 import { LiveFloorPresenter } from "../../adapters/presenters/LiveFloorPresenter"
 import { PipelinePresenter } from "../../adapters/presenters/PipelinePresenter"
 import { MetricsPresenter } from "../../adapters/presenters/MetricsPresenter"
@@ -72,7 +75,7 @@ import type {
 } from "../../use-cases/ports/AIProvider"
 import type { TokenBudget } from "../../entities/Budget"
 import type { FileSystem } from "../../use-cases/ports/FileSystem"
-import type { ShellExecutor } from "../../use-cases/ports/ShellExecutor"
+import type { ShellExecutor, ShellExecutorFactory } from "../../use-cases/ports/ShellExecutor"
 import type { TaskRepository } from "../../use-cases/ports/TaskRepository"
 import type { GoalRepository } from "../../use-cases/ports/GoalRepository"
 import type { AgentRegistry } from "../../use-cases/ports/AgentRegistry"
@@ -345,7 +348,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const fsFactory = useMock
     ? (_path: string): FileSystem => createMockFileSystem()
     : (path: string): FileSystem => new NodeFileSystem(path)
-  const shellFactory = useMock
+  const shellFactory: ShellExecutorFactory = useMock
     ? (_path: string): ShellExecutor => createMockShell()
     : (path: string): ShellExecutor => new NodeShellExecutor(path)
 
@@ -543,24 +546,20 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   bus.subscribe({ types: alertRules.map(r => r.trigger) }, (message) => evaluateAlert.execute(message))
 
   // -------------------------------------------------------------------------
-  // 10b. Workspace run management (Task 11 will replace no-op deps with real ones)
+  // 10b. Workspace run management
   // -------------------------------------------------------------------------
   const workspaceRunRepo = new InMemoryWorkspaceRunRepository()
+  const workspaceIsolator = new GitCloneIsolator(shellFactory)
+  const gitRemote = new NodeGitRemote(shellFactory)
+  const prCreator = new GitHubPullRequestCreator(shellFactory)
+  const autoMerge = process.env["DEVFLEET_AUTO_MERGE"] === "true"
   const workspaceManager = new WorkspaceRunManager({
     repo: workspaceRunRepo,
-    isolator: {
-      async create(_repoUrl: string) { return { id: "noop" } },
-      async installDependencies(_handle, _cmd) {},
-      getWorkspaceDir(_handle) { return config.workspaceDir },
-      async cleanup(_handle) {},
-    },
-    fsFactory: (path: string) => fsFactory(path),
-    gitRemote: { async push(_branch, _url, _dir) {} },
-    prCreator: {
-      async create(_params) { return "https://github.com/no-op/pr/0" },
-      async merge(_prUrl, _dir) {},
-    },
-    autoMerge: false,
+    isolator: workspaceIsolator,
+    fsFactory: (rootPath: string) => new NodeFileSystem(rootPath),
+    gitRemote,
+    prCreator,
+    autoMerge,
     buildSystem,
     apiKey: config.anthropicApiKey ?? "",
   })
@@ -615,6 +614,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
         clearInterval(stuckAgentInterval)
         stuckAgentInterval = null
       }
+      await workspaceManager.stopAll()
       await worktreeManager.cleanupAll()
       sseManager.shutdown()
       await pluginRegistry.stopAll()
