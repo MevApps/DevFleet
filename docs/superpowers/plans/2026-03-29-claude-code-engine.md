@@ -67,7 +67,33 @@
 
 ---
 
-### Task 1: New Port — `AgentSession`
+### Task 1: Swap npm Dependency
+
+**Files:**
+- Modify: `package.json`
+
+- [ ] **Step 1: Remove old SDK, add new SDK**
+
+```bash
+npm uninstall @anthropic-ai/sdk
+npm install @anthropic-ai/claude-agent-sdk
+```
+
+- [ ] **Step 2: Verify install succeeded**
+
+Run: `ls node_modules/@anthropic-ai/claude-agent-sdk/package.json`
+Expected: File exists
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add package.json package-lock.json
+git commit -m "chore: swap @anthropic-ai/sdk for @anthropic-ai/claude-agent-sdk"
+```
+
+---
+
+### Task 2: New Port — `AgentSession`
 
 **Files:**
 - Create: `src/use-cases/ports/AgentSession.ts`
@@ -90,8 +116,6 @@ export interface PhaseTask {
 
 export type SessionEvent =
   | { readonly type: "started"; readonly sessionId: string; readonly model: string }
-  | { readonly type: "tool_used"; readonly name: string; readonly input: string }
-  | { readonly type: "tool_result"; readonly name: string; readonly success: boolean; readonly output: string }
   | { readonly type: "text"; readonly content: string }
   | { readonly type: "turn_completed"; readonly tokensIn: number; readonly tokensOut: number }
   | { readonly type: "completed"; readonly result: string; readonly totalTokensIn: number; readonly totalTokensOut: number; readonly durationMs: number; readonly numTurns: number }
@@ -112,58 +136,6 @@ Expected: No errors
 ```bash
 git add src/use-cases/ports/AgentSession.ts
 git commit -m "feat: add AgentSession port with PhaseTask and SessionEvent types"
-```
-
----
-
-### Task 2: Update `AgentExecutor` Port
-
-**Files:**
-- Modify: `src/use-cases/ports/AgentExecutor.ts`
-
-- [ ] **Step 1: Replace `tools` with `capabilities` in `AgentConfig`**
-
-Replace the entire file content:
-
-```typescript
-// src/use-cases/ports/AgentExecutor.ts
-import type { Task } from "../../entities/Task"
-import type { AgentId, ProjectId } from "../../entities/ids"
-import type { AgentRole } from "../../entities/AgentRole"
-import type { TokenBudget } from "../../entities/Budget"
-import type { AgentCapability } from "./AgentSession"
-
-export interface AgentConfig {
-  readonly role: AgentRole
-  readonly systemPrompt: string
-  readonly capabilities: ReadonlyArray<AgentCapability>
-  readonly model: string
-  readonly budget: TokenBudget
-  readonly workingDir: string
-}
-
-export type AgentEventType = "turn_completed" | "tool_used" | "tool_result" | "text" | "task_completed" | "task_failed" | "budget_exceeded"
-
-export interface AgentEvent {
-  readonly type: AgentEventType
-  readonly data: Record<string, unknown>
-}
-
-export interface AgentExecutor {
-  run(agentId: AgentId, config: AgentConfig, task: Task, projectId: ProjectId): AsyncIterable<AgentEvent>
-}
-```
-
-- [ ] **Step 2: Verify it compiles (expect errors in consumers — that's fine for now)**
-
-Run: `npx tsc --noEmit src/use-cases/ports/AgentExecutor.ts`
-Expected: No errors in this file itself
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/use-cases/ports/AgentExecutor.ts
-git commit -m "feat: update AgentExecutor port — replace tools with capabilities"
 ```
 
 ---
@@ -700,11 +672,13 @@ export class RunAgentSession implements AgentExecutor {
 
     let lastResult = ""
     let lastNumTurns = 0
+    let lastTurnTime = Date.now()
 
     try {
       for await (const event of this.session.launch(phaseTask, controller.signal)) {
         switch (event.type) {
           case "started":
+            lastTurnTime = Date.now()
             await this.bus.emit({
               id: createMessageId(),
               type: "agent.active",
@@ -715,23 +689,19 @@ export class RunAgentSession implements AgentExecutor {
             })
             break
 
-          case "tool_used":
-            yield { type: "tool_used", data: { name: event.name, input: event.input } }
-            break
-
-          case "tool_result":
-            yield { type: "tool_result", data: { name: event.name, success: event.success, output: event.output } }
-            break
-
           case "text":
             yield { type: "text", data: { content: event.content } }
             break
 
           case "turn_completed": {
+            const now = Date.now()
+            const turnDurationMs = now - lastTurnTime
+            lastTurnTime = now
+
             await this.recordTurnMetrics.execute(task.id, {
               tokensIn: event.tokensIn,
               tokensOut: event.tokensOut,
-              durationMs: 0,
+              durationMs: turnDurationMs,
             })
 
             yield { type: "turn_completed", data: { tokensIn: event.tokensIn, tokensOut: event.tokensOut } }
@@ -1182,7 +1152,56 @@ git commit -m "feat: add ClaudeAgentSdkAdapter — thin wrapper over Agent SDK"
 
 ---
 
-### Task 8: Update Plugins — DeveloperPlugin
+### Task 8: Update `AgentExecutor` Port
+
+**Files:**
+- Modify: `src/use-cases/ports/AgentExecutor.ts`
+
+This is done NOW (right before plugin updates) to avoid a broken intermediate state. The new port and all new use cases are already in place; the consumers are about to be updated in the following tasks.
+
+- [ ] **Step 1: Replace `tools` with `capabilities` in `AgentConfig`**
+
+Replace the entire file content:
+
+```typescript
+// src/use-cases/ports/AgentExecutor.ts
+import type { Task } from "../../entities/Task"
+import type { AgentId, ProjectId } from "../../entities/ids"
+import type { AgentRole } from "../../entities/AgentRole"
+import type { TokenBudget } from "../../entities/Budget"
+import type { AgentCapability } from "./AgentSession"
+
+export interface AgentConfig {
+  readonly role: AgentRole
+  readonly systemPrompt: string
+  readonly capabilities: ReadonlyArray<AgentCapability>
+  readonly model: string
+  readonly budget: TokenBudget
+  readonly workingDir: string
+}
+
+export type AgentEventType = "turn_completed" | "text" | "task_completed" | "task_failed" | "budget_exceeded"
+
+export interface AgentEvent {
+  readonly type: AgentEventType
+  readonly data: Record<string, unknown>
+}
+
+export interface AgentExecutor {
+  run(agentId: AgentId, config: AgentConfig, task: Task, projectId: ProjectId): AsyncIterable<AgentEvent>
+}
+```
+
+- [ ] **Step 2: Commit (consumers will be updated in the immediately following tasks)**
+
+```bash
+git add src/use-cases/ports/AgentExecutor.ts
+git commit -m "feat: update AgentExecutor port — replace tools with capabilities"
+```
+
+---
+
+### Task 9: Update Plugins — DeveloperPlugin
 
 **Files:**
 - Modify: `src/adapters/plugins/agents/DeveloperPlugin.ts`
@@ -1298,7 +1317,7 @@ git commit -m "refactor: DeveloperPlugin — remove tool defs, use capabilities 
 
 ---
 
-### Task 9: Update Plugins — ReviewerPlugin, ProductPlugin, ArchitectPlugin
+### Task 10: Update Plugins — ReviewerPlugin, ProductPlugin, ArchitectPlugin
 
 **Files:**
 - Modify: `src/adapters/plugins/agents/ReviewerPlugin.ts`
@@ -1377,7 +1396,7 @@ git commit -m "refactor: update Reviewer, Product, Architect plugins — capabil
 
 ---
 
-### Task 10: Update OpsPlugin to Use `RunBuildAndTest`
+### Task 11: Update OpsPlugin to Use `RunBuildAndTest`
 
 **Files:**
 - Modify: `src/adapters/plugins/agents/OpsPlugin.ts`
@@ -1499,7 +1518,7 @@ git commit -m "refactor: OpsPlugin — use RunBuildAndTest, no fake AI"
 
 ---
 
-### Task 11: Update SupervisorPlugin
+### Task 12: Update SupervisorPlugin
 
 **Files:**
 - Modify: `src/adapters/plugins/agents/SupervisorPlugin.ts`
@@ -1514,6 +1533,7 @@ readonly promptAgent: PromptAgent
 with:
 ```typescript
 readonly agentSession: AgentSession
+readonly workspaceDir: string
 ```
 
 Add import:
@@ -1541,7 +1561,7 @@ private async handleGoalCreated(goalId: GoalId, description: string): Promise<vo
   const phaseTask: PhaseTask = {
     systemPrompt: this.deps.systemPrompt,
     taskDescription: `Decompose this goal into tasks. Return a JSON array of {description, phase} objects.\nPhases available: ${this.deps.pipelineConfig.phases.join(", ")}\n\nGoal: ${description}`,
-    workingDir: process.cwd(),
+    workingDir: this.deps.workspaceDir,
     capabilities: [],
     maxTurns: 3,
     model: this.deps.model,
@@ -1607,63 +1627,7 @@ git commit -m "refactor: SupervisorPlugin — use AgentSession instead of Prompt
 
 ---
 
-### Task 12: Delete Dead Code
-
-**Files:**
-- Delete: `src/use-cases/ports/AIProvider.ts`
-- Delete: `src/use-cases/ports/ScopedExecutorFactory.ts`
-- Delete: `src/use-cases/PromptAgent.ts`
-- Delete: `src/use-cases/ExecuteToolCalls.ts`
-- Delete: `src/use-cases/RunAgentLoop.ts`
-- Delete: `src/use-cases/EvaluateTurnOutcome.ts`
-- Delete: `src/entities/Conversation.ts`
-- Delete: `src/adapters/ai-providers/ClaudeProvider.ts`
-- Delete: `src/adapters/ai-providers/DeterministicProvider.ts`
-- Delete: `tests/use-cases/PromptAgent.test.ts`
-- Delete: `tests/use-cases/ExecuteToolCalls.test.ts`
-- Delete: `tests/use-cases/RunAgentLoop.test.ts`
-- Delete: `tests/use-cases/EvaluateTurnOutcome.test.ts`
-- Delete: `tests/adapters/DeterministicProvider.test.ts`
-
-- [ ] **Step 1: Delete all dead source files**
-
-```bash
-rm src/use-cases/ports/AIProvider.ts
-rm src/use-cases/ports/ScopedExecutorFactory.ts
-rm src/use-cases/PromptAgent.ts
-rm src/use-cases/ExecuteToolCalls.ts
-rm src/use-cases/RunAgentLoop.ts
-rm src/use-cases/EvaluateTurnOutcome.ts
-rm src/entities/Conversation.ts
-rm src/adapters/ai-providers/ClaudeProvider.ts
-rm src/adapters/ai-providers/DeterministicProvider.ts
-```
-
-- [ ] **Step 2: Delete all dead test files**
-
-```bash
-rm tests/use-cases/PromptAgent.test.ts
-rm tests/use-cases/ExecuteToolCalls.test.ts
-rm tests/use-cases/RunAgentLoop.test.ts
-rm tests/use-cases/EvaluateTurnOutcome.test.ts
-rm tests/adapters/DeterministicProvider.test.ts
-```
-
-- [ ] **Step 3: Verify no remaining imports reference deleted files**
-
-Run: `grep -r "from.*AIProvider\|from.*ScopedExecutorFactory\|from.*PromptAgent\|from.*ExecuteToolCalls\|from.*RunAgentLoop\|from.*EvaluateTurnOutcome\|from.*Conversation\|from.*ClaudeProvider\|from.*DeterministicProvider" src/ --include="*.ts"`
-Expected: No matches (all references should have been updated in prior tasks)
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add -A
-git commit -m "chore: delete dead code — old AI ports, providers, agent loop, conversation"
-```
-
----
-
-### Task 13: Rewire Composition Root
+### Task 13: Rewire Composition Root + Update CLI Entry Point
 
 **Files:**
 - Modify: `src/infrastructure/config/composition-root.ts`
@@ -1758,7 +1722,7 @@ Remove `scopedExecutorFactory`. Update all plugin constructors to pass new deps:
 
 For `DeveloperPlugin`: remove `scopedExecutorFactory`, add `workspaceDir: config.workspaceDir`.
 For `ReviewerPlugin`, `ProductPlugin`, `ArchitectPlugin`: add `workspaceDir: config.workspaceDir`.
-For `SupervisorPlugin`: replace `promptAgent` with `agentSession`.
+For `SupervisorPlugin`: replace `promptAgent` with `agentSession`, add `workspaceDir: config.workspaceDir`.
 For `OpsPlugin`: replace `executor` with `runBuildAndTest`, add `buildCommand`, `testCommand`.
 
 - [ ] **Step 5: Remove `MockAIProvider` class and `createMockFileSystem`/`createMockShell` (keep the mock FS/shell — still needed for Ops test mode)**
@@ -1797,28 +1761,9 @@ const workspaceManager = new WorkspaceRunManager({
 })
 ```
 
-- [ ] **Step 7: Verify the full project compiles**
+- [ ] **Step 7: Update CLI entry point (`src/infrastructure/cli/index.ts`)**
 
-Run: `npx tsc --noEmit`
-Expected: No errors
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add -A
-git commit -m "refactor: rewire composition root — AgentSession, RunBuildAndTest, no API key"
-```
-
----
-
-### Task 14: Update CLI Entry Point
-
-**Files:**
-- Modify: `src/infrastructure/cli/index.ts`
-
-- [ ] **Step 1: Update the CLI to use `mockMode` instead of `ANTHROPIC_API_KEY`**
-
-Remove `API_KEY` reading and replace with:
+Remove `API_KEY` / `ANTHROPIC_API_KEY` reading. Replace with:
 
 ```typescript
 const MOCK_MODE = process.env["DEVFLEET_MOCK"] === "true"
@@ -1828,52 +1773,79 @@ if (MOCK_MODE) {
 }
 ```
 
-Update the `buildSystem` call:
+Update the `buildSystem` call to pass `mockMode: MOCK_MODE` instead of `anthropicApiKey`.
 
-```typescript
-const system = await buildSystem({
-  workspaceDir: process.cwd(),
-  mockMode: MOCK_MODE,
-  // ... other config from env vars
-})
-```
+- [ ] **Step 8: Verify the full project compiles**
 
-- [ ] **Step 2: Commit**
+Run: `npx tsc --noEmit`
+Expected: No errors
+
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/infrastructure/cli/index.ts
-git commit -m "refactor: CLI entry point — use DEVFLEET_MOCK instead of ANTHROPIC_API_KEY"
+git add -A
+git commit -m "refactor: rewire composition root + CLI — AgentSession, RunBuildAndTest, no API key"
 ```
 
 ---
 
-### Task 15: Swap npm Dependency
+### Task 14: Delete Dead Code
 
 **Files:**
-- Modify: `package.json`
+- Delete: `src/use-cases/ports/AIProvider.ts`
+- Delete: `src/use-cases/ports/ScopedExecutorFactory.ts`
+- Delete: `src/use-cases/PromptAgent.ts`
+- Delete: `src/use-cases/ExecuteToolCalls.ts`
+- Delete: `src/use-cases/RunAgentLoop.ts`
+- Delete: `src/use-cases/EvaluateTurnOutcome.ts`
+- Delete: `src/entities/Conversation.ts`
+- Delete: `src/adapters/ai-providers/ClaudeProvider.ts`
+- Delete: `src/adapters/ai-providers/DeterministicProvider.ts`
+- Delete: `tests/use-cases/PromptAgent.test.ts`
+- Delete: `tests/use-cases/ExecuteToolCalls.test.ts`
+- Delete: `tests/use-cases/RunAgentLoop.test.ts`
+- Delete: `tests/use-cases/EvaluateTurnOutcome.test.ts`
+- Delete: `tests/adapters/DeterministicProvider.test.ts`
 
-- [ ] **Step 1: Remove old SDK, add new SDK**
+- [ ] **Step 1: Delete all dead source files**
 
 ```bash
-npm uninstall @anthropic-ai/sdk
-npm install @anthropic-ai/claude-agent-sdk
+rm src/use-cases/ports/AIProvider.ts
+rm src/use-cases/ports/ScopedExecutorFactory.ts
+rm src/use-cases/PromptAgent.ts
+rm src/use-cases/ExecuteToolCalls.ts
+rm src/use-cases/RunAgentLoop.ts
+rm src/use-cases/EvaluateTurnOutcome.ts
+rm src/entities/Conversation.ts
+rm src/adapters/ai-providers/ClaudeProvider.ts
+rm src/adapters/ai-providers/DeterministicProvider.ts
 ```
 
-- [ ] **Step 2: Verify install succeeded**
-
-Run: `ls node_modules/@anthropic-ai/claude-agent-sdk/package.json`
-Expected: File exists
-
-- [ ] **Step 3: Commit**
+- [ ] **Step 2: Delete all dead test files**
 
 ```bash
-git add package.json package-lock.json
-git commit -m "chore: swap @anthropic-ai/sdk for @anthropic-ai/claude-agent-sdk"
+rm tests/use-cases/PromptAgent.test.ts
+rm tests/use-cases/ExecuteToolCalls.test.ts
+rm tests/use-cases/RunAgentLoop.test.ts
+rm tests/use-cases/EvaluateTurnOutcome.test.ts
+rm tests/adapters/DeterministicProvider.test.ts
+```
+
+- [ ] **Step 3: Verify no remaining imports reference deleted files**
+
+Run: `grep -r "from.*AIProvider\|from.*ScopedExecutorFactory\|from.*PromptAgent\|from.*ExecuteToolCalls\|from.*RunAgentLoop\|from.*EvaluateTurnOutcome\|from.*Conversation\|from.*ClaudeProvider\|from.*DeterministicProvider" src/ --include="*.ts"`
+Expected: No matches (all references should have been updated in prior tasks)
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add -A
+git commit -m "chore: delete dead code — old AI ports, providers, agent loop, conversation"
 ```
 
 ---
 
-### Task 16: Update Integration Tests
+### Task 15: Update Integration Tests
 
 **Files:**
 - Modify: `tests/integration/end-to-end.test.ts`
@@ -1906,7 +1878,7 @@ git commit -m "test: update integration and workspace tests for new engine"
 
 ---
 
-### Task 17: Final Typecheck and Full Test Run
+### Task 16: Final Typecheck and Full Test Run
 
 - [ ] **Step 1: Run typecheck**
 
