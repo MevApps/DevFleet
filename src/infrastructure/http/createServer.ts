@@ -20,6 +20,7 @@ import type { MetricsPresenter } from "../../adapters/presenters/MetricsPresente
 import type { PluginRegistry } from "../../adapters/plugins/PluginRegistry"
 import type { SSEManager } from "./sseManager"
 import type { WorkspaceRunManager } from "../../use-cases/WorkspaceRunManager"
+import type { WorkspaceRunRepository } from "../../use-cases/ports/WorkspaceRunRepository"
 import { agentRoutes } from "./routes/agentRoutes"
 import { goalRoutes } from "./routes/goalRoutes"
 import { taskRoutes } from "./routes/taskRoutes"
@@ -28,6 +29,7 @@ import { metricsRoutes } from "./routes/metricsRoutes"
 import { insightRoutes } from "./routes/insightRoutes"
 import { alertRoutes } from "./routes/alertRoutes"
 import { systemRoutes } from "./routes/systemRoutes"
+import { workspaceRoutes } from "./routes/workspaceRoutes"
 
 export interface DashboardDeps {
   readonly agentRegistry: AgentRegistry
@@ -48,7 +50,8 @@ export interface DashboardDeps {
   readonly computeQuality: ComputeQualityMetrics
   readonly computeTimings: ComputePhaseTimings
   readonly alertPreferencesStore: AlertPreferencesStore
-  readonly workspaceManager?: WorkspaceRunManager
+  readonly workspaceManager: WorkspaceRunManager
+  readonly workspaceRunRepo: WorkspaceRunRepository
 }
 
 export function createServer(deps: DashboardDeps): Express {
@@ -71,6 +74,7 @@ export function createServer(deps: DashboardDeps): Express {
   app.use("/api/insights", insightRoutes(deps.insightRepo, deps.acceptInsight, deps.dismissInsight))
   app.use("/api/alerts", alertRoutes(deps.eventStore, deps.alertPreferencesStore))
   app.use("/api/system", systemRoutes(deps.pluginRegistry))
+  app.use("/api/workspace", workspaceRoutes(deps.workspaceManager, deps.workspaceRunRepo))
 
   // Presenter endpoints
   app.get("/api/live-floor", async (_req: Request, res: Response, next: NextFunction) => {

@@ -10,6 +10,7 @@ import { InMemoryKeepDiscardRepository } from "../../adapters/storage/InMemoryKe
 import { InMemoryInsightRepository } from "../../adapters/storage/InMemoryInsightRepository"
 import { InMemoryBudgetConfigStore } from "../../adapters/storage/InMemoryBudgetConfigStore"
 import { InMemoryAlertPreferencesStore } from "../../adapters/storage/InMemoryAlertPreferencesStore"
+import { InMemoryWorkspaceRunRepository } from "../../adapters/storage/InMemoryWorkspaceRunRepository"
 import { InMemoryBus } from "../../adapters/messaging/InMemoryBus"
 import { NodeFileSystem } from "../../adapters/filesystem/NodeFileSystem"
 import { NodeShellExecutor } from "../../adapters/shell/NodeShellExecutor"
@@ -48,6 +49,7 @@ import { AcceptInsight } from "../../use-cases/AcceptInsight"
 import { DismissInsight } from "../../use-cases/DismissInsight"
 import { DetectProjectConfig } from "../../use-cases/DetectProjectConfig"
 import { EvaluateAlert, type AlertRule } from "../../use-cases/EvaluateAlert"
+import { WorkspaceRunManager } from "../../use-cases/WorkspaceRunManager"
 import { LiveFloorPresenter } from "../../adapters/presenters/LiveFloorPresenter"
 import { PipelinePresenter } from "../../adapters/presenters/PipelinePresenter"
 import { MetricsPresenter } from "../../adapters/presenters/MetricsPresenter"
@@ -540,6 +542,29 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const evaluateAlert = new EvaluateAlert(notificationPort, alertPreferencesStore, bus, alertRules)
   bus.subscribe({ types: alertRules.map(r => r.trigger) }, (message) => evaluateAlert.execute(message))
 
+  // -------------------------------------------------------------------------
+  // 10b. Workspace run management (Task 11 will replace no-op deps with real ones)
+  // -------------------------------------------------------------------------
+  const workspaceRunRepo = new InMemoryWorkspaceRunRepository()
+  const workspaceManager = new WorkspaceRunManager({
+    repo: workspaceRunRepo,
+    isolator: {
+      async create(_repoUrl: string) { return { id: "noop" } },
+      async installDependencies(_handle, _cmd) {},
+      getWorkspaceDir(_handle) { return config.workspaceDir },
+      async cleanup(_handle) {},
+    },
+    fsFactory: (path: string) => fsFactory(path),
+    gitRemote: { async push(_branch, _url, _dir) {} },
+    prCreator: {
+      async create(_params) { return "https://github.com/no-op/pr/0" },
+      async merge(_prUrl, _dir) {},
+    },
+    autoMerge: false,
+    buildSystem,
+    apiKey: config.anthropicApiKey ?? "",
+  })
+
   const dashboardDeps: DashboardDeps = {
     agentRegistry,
     goalRepo,
@@ -559,6 +584,8 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     computeQuality: computeQuality,
     computeTimings: computeTimings,
     alertPreferencesStore,
+    workspaceManager,
+    workspaceRunRepo,
   }
 
   // I2: DetectStuckAgent runs on an interval so stuck agents are caught without polling.
