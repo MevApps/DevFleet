@@ -7,9 +7,9 @@ export default function InsightsPage() {
   const [insights, setInsights] = useState<InsightSummary[]>([])
   const [selected, setSelected] = useState<InsightDetail | null>(null)
   const [tab, setTab] = useState("pending")
-  const load = () => { api.insights(tab).then(setInsights) }
+  const load = () => { api.insights(tab).then(setInsights).catch(() => {}) }
   useEffect(load, [tab])
-  const onSelect = async (id: string) => { setSelected(await api.insight(id)) }
+  const onSelect = async (id: string) => { try { setSelected(await api.insight(id)) } catch {} }
   const onAccept = async (id: string) => { await api.acceptInsight(id); setSelected(null); load() }
   const onDismiss = async (id: string) => { await api.dismissInsight(id); setSelected(null); load() }
   return (

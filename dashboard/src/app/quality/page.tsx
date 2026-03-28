@@ -5,7 +5,7 @@ import type { QualityData } from "@/lib/types"
 
 export default function QualityPage() {
   const [data, setData] = useState<QualityData | null>(null)
-  useEffect(() => { api.quality().then(setData) }, [])
+  useEffect(() => { api.quality().then(setData).catch(() => {}) }, [])
   if (!data) return <div className="text-text-secondary">Loading quality metrics...</div>
   const pct = (data.overallKeepRate * 100).toFixed(1)
   const color = data.overallKeepRate > 0.7 ? "text-status-green-fg" : data.overallKeepRate > 0.5 ? "text-status-yellow-fg" : "text-status-red-fg"

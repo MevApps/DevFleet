@@ -5,7 +5,7 @@ import type { FinancialsData } from "@/lib/types"
 
 export default function FinancialsPage() {
   const [data, setData] = useState<FinancialsData | null>(null)
-  useEffect(() => { api.financials().then(setData) }, [])
+  useEffect(() => { api.financials().then(setData).catch(() => {}) }, [])
   if (!data) return <div className="text-text-secondary">Loading financials...</div>
   const avgCost = data.costPerGoal.length > 0 ? data.costPerGoal.reduce((s, g) => s + g.costUsd, 0) / data.costPerGoal.length : 0
   const agents = Object.entries(data.agentTokenBreakdown).sort((a, b) => b[1] - a[1])

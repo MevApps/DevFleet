@@ -10,7 +10,7 @@ export default function SystemPage() {
   const [agents, setAgents] = useState<AgentDTO[]>([])
   const [plugins, setPlugins] = useState<PluginHealth[]>([])
   const [timings, setTimings] = useState<TimingsData | null>(null)
-  useEffect(() => { api.liveFloor().then(d => setAgents([...d.agents])); api.systemHealth().then(setPlugins); api.timings().then(setTimings) }, [])
+  useEffect(() => { api.liveFloor().then(d => setAgents([...d.agents])).catch(() => {}); api.systemHealth().then(setPlugins).catch(() => {}); api.timings().then(setTimings).catch(() => {}) }, [])
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-text-primary">System Health</h1>
