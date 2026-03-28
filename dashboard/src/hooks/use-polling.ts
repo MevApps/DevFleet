@@ -3,8 +3,9 @@ import { useEffect } from "react"
 
 export function usePolling(fetchFn: () => Promise<void>, intervalMs: number = 10_000) {
   useEffect(() => {
-    fetchFn()
-    const interval = setInterval(() => void fetchFn(), intervalMs)
+    const safeFetch = () => fetchFn().catch(() => { /* endpoint may not exist yet */ })
+    safeFetch()
+    const interval = setInterval(safeFetch, intervalMs)
     return () => clearInterval(interval)
   }, [fetchFn, intervalMs])
 }
