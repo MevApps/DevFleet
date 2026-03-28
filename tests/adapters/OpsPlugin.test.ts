@@ -5,7 +5,7 @@ import { InMemoryArtifactRepo } from "@adapters/storage/InMemoryArtifactRepo"
 import { createTask } from "@entities/Task"
 import { createAgentId, createTaskId, createGoalId, createMessageId, createProjectId } from "@entities/ids"
 import { createBudget } from "@entities/Budget"
-import { success } from "../../src/use-cases/Result"
+import { success, failure } from "../../src/use-cases/Result"
 import type { Message } from "@entities/Message"
 
 describe("OpsPlugin", () => {
@@ -47,7 +47,7 @@ describe("OpsPlugin", () => {
     expect(reportMsg).toBeDefined()
   })
 
-  it("emits build.failed when executor signals failure", async () => {
+  it("emits build.failed when runBuildAndTest returns failure", async () => {
     const bus = new InMemoryBus()
     const emitted: Message[] = []
     bus.subscribe({}, async (msg) => { emitted.push(msg) })
@@ -65,12 +65,9 @@ describe("OpsPlugin", () => {
     const plugin = createTestOpsPlugin({
       taskRepo,
       bus,
-      executor: {
-        async *run() {
-          yield { type: "tool_executed", data: { toolName: "shell_run", success: false } }
-          yield { type: "task_completed", data: { content: "Build FAILED\n0 passed, 3 failed" } }
-        },
-      } as any,
+      runBuildAndTest: {
+        execute: jest.fn().mockResolvedValue(failure("Build FAILED\n0 passed, 3 failed")),
+      },
     })
 
     await plugin.handle({
@@ -117,15 +114,17 @@ function createTestOpsPlugin(overrides: Record<string, unknown> = {}): OpsPlugin
   return new OpsPlugin({
     agentId: createAgentId("ops-1"),
     projectId: createProjectId("proj-1"),
-    executor: (overrides["executor"] as any) ?? {
-      async *run() {
-        yield { type: "tool_executed", data: { toolName: "shell_run", success: true } }
-        yield { type: "task_completed", data: { content: "Build OK\n10 passed, 0 failed" } }
-      },
+    runBuildAndTest: (overrides["runBuildAndTest"] as any) ?? {
+      execute: jest.fn().mockResolvedValue(success({
+        buildOutput: "Build OK\n10 passed, 0 failed",
+        testOutput: "All tests passed",
+      })),
     },
     taskRepo: (overrides["taskRepo"] as any) ?? new InMemoryTaskRepo(),
     artifactRepo: (overrides["artifactRepo"] as any) ?? new InMemoryArtifactRepo(),
     createArtifact: (overrides["createArtifact"] as any) ?? { execute: async () => success(undefined) },
     bus: (overrides["bus"] as any) ?? new InMemoryBus(),
+    buildCommand: "npm run build",
+    testCommand: "npm test",
   })
 }

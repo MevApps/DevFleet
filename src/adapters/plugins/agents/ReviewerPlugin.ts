@@ -7,7 +7,6 @@ import type { TaskRepository } from "../../../use-cases/ports/TaskRepository"
 import type { ArtifactRepository } from "../../../use-cases/ports/ArtifactRepository"
 import type { MessagePort } from "../../../use-cases/ports/MessagePort"
 import type { CreateArtifactUseCase } from "../../../use-cases/CreateArtifact"
-import type { ToolDefinition } from "../../../use-cases/ports/AIProvider"
 import { createArtifact } from "../../../entities/Artifact"
 import { ROLES } from "../../../entities/AgentRole"
 
@@ -21,25 +20,8 @@ export interface ReviewerPluginDeps {
   readonly bus: MessagePort
   readonly systemPrompt: string
   readonly model: string
+  readonly workspaceDir: string
 }
-
-const REVIEWER_TOOLS: ToolDefinition[] = [
-  {
-    name: "file_read",
-    description: "Read a file",
-    inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
-  },
-  {
-    name: "file_glob",
-    description: "List files matching a pattern",
-    inputSchema: { type: "object", properties: { pattern: { type: "string" } }, required: ["pattern"] },
-  },
-  {
-    name: "shell_run",
-    description: "Run a shell command",
-    inputSchema: { type: "object", properties: { command: { type: "string" } }, required: ["command"] },
-  },
-]
 
 export class ReviewerPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
   readonly id: string
@@ -75,9 +57,10 @@ export class ReviewerPlugin implements PluginIdentity, Lifecycle, PluginMessageH
     const config = {
       role: ROLES.REVIEWER,
       systemPrompt: this.deps.systemPrompt + (artifactContext ? `\n\nArtifacts for review:\n${artifactContext}` : ""),
-      tools: REVIEWER_TOOLS,
+      capabilities: ["file_access" as const, "shell" as const],
       model: this.deps.model,
       budget: task.budget,
+      workingDir: this.deps.workspaceDir,
     }
 
     let content = ""

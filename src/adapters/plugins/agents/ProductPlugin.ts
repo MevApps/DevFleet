@@ -20,6 +20,7 @@ export interface ProductPluginDeps {
   readonly bus: MessagePort
   readonly systemPrompt: string
   readonly model: string
+  readonly workspaceDir: string
 }
 
 export class ProductPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
@@ -53,9 +54,10 @@ export class ProductPlugin implements PluginIdentity, Lifecycle, PluginMessageHa
     const config = {
       role: ROLES.PRODUCT,
       systemPrompt: this.deps.systemPrompt,
-      tools: [],
+      capabilities: [],
       model: this.deps.model,
       budget: task.budget,
+      workingDir: this.deps.workspaceDir,
     }
 
     let content = ""

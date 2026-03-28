@@ -122,6 +122,7 @@ function createTestReviewerPlugin(overrides: Record<string, unknown> = {}): Revi
     bus: (overrides["bus"] as any) ?? new InMemoryBus(),
     systemPrompt: "Review this code.",
     model: "claude-opus-4-6",
+    workspaceDir: "/tmp/workspace",
     ...Object.fromEntries(
       Object.entries(overrides).filter(([k]) =>
         !["executor", "taskRepo", "artifactRepo", "createArtifact", "bus"].includes(k)

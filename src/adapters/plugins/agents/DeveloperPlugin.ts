@@ -4,10 +4,8 @@ import type { Message, MessageFilter } from "../../../entities/Message"
 import type { PluginIdentity, Lifecycle, PluginMessageHandler, HealthStatus } from "../../../use-cases/ports/PluginInterfaces"
 import type { AgentExecutor } from "../../../use-cases/ports/AgentExecutor"
 import type { TaskRepository } from "../../../use-cases/ports/TaskRepository"
-import type { ToolDefinition } from "../../../use-cases/ports/AIProvider"
 import type { MessagePort } from "../../../use-cases/ports/MessagePort"
 import type { WorktreeManager } from "../../../use-cases/ports/WorktreeManager"
-import type { ScopedExecutorFactory } from "../../../use-cases/ports/ScopedExecutorFactory"
 import { ROLES } from "../../../entities/AgentRole"
 
 export interface DeveloperPluginDeps {
@@ -19,70 +17,8 @@ export interface DeveloperPluginDeps {
   readonly model: string
   readonly bus: MessagePort
   readonly worktreeManager: WorktreeManager
-  readonly scopedExecutorFactory: ScopedExecutorFactory
+  readonly workspaceDir: string
 }
-
-export const DEVELOPER_TOOLS: ToolDefinition[] = [
-  {
-    name: "file_read",
-    description: "Read the contents of a file",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "Path to the file to read" },
-      },
-      required: ["path"],
-    },
-  },
-  {
-    name: "file_write",
-    description: "Write content to a file (creates or overwrites)",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "Path to write to" },
-        content: { type: "string", description: "Content to write" },
-      },
-      required: ["path", "content"],
-    },
-  },
-  {
-    name: "file_edit",
-    description: "Replace a substring in a file",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "Path to the file to edit" },
-        oldContent: { type: "string", description: "Content to replace" },
-        newContent: { type: "string", description: "Replacement content" },
-      },
-      required: ["path", "oldContent", "newContent"],
-    },
-  },
-  {
-    name: "file_glob",
-    description: "List files matching a glob pattern",
-    inputSchema: {
-      type: "object",
-      properties: {
-        pattern: { type: "string", description: "Glob pattern" },
-      },
-      required: ["pattern"],
-    },
-  },
-  {
-    name: "shell_run",
-    description: "Run a shell command",
-    inputSchema: {
-      type: "object",
-      properties: {
-        command: { type: "string", description: "Shell command to execute" },
-        timeout: { type: "number", description: "Timeout in milliseconds" },
-      },
-      required: ["command"],
-    },
-  },
-]
 
 export class DeveloperPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
   // PluginIdentity
@@ -131,18 +67,16 @@ export class DeveloperPlugin implements PluginIdentity, Lifecycle, PluginMessage
     const updatedTask = { ...task, branch: branchName, version: task.version + 1 }
     await this.deps.taskRepo.update(updatedTask)
 
-    // Always use scoped executor
-    const executor = this.deps.scopedExecutorFactory(worktreePath)
-
     const config = {
       role: ROLES.DEVELOPER,
       systemPrompt: this.deps.systemPrompt,
-      tools: DEVELOPER_TOOLS,
+      capabilities: ["file_access" as const, "shell" as const],
       model: this.deps.model,
       budget: task.budget,
+      workingDir: worktreePath,
     }
 
-    for await (const event of executor.run(this.deps.agentId, config, task, this.deps.projectId)) {
+    for await (const event of this.deps.executor.run(this.deps.agentId, config, task, this.deps.projectId)) {
       if (event.type === "task_completed") {
         await this.deps.bus.emit({
           id: createMessageId(),
