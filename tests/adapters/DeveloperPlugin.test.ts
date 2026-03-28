@@ -236,6 +236,7 @@ describe("DeveloperPlugin – worktree isolation", () => {
       delete: async () => {},
       merge: async () => ({ success: true as const, commit: "abc" }),
       exists: async () => false,
+      cleanupAll: async () => {},
     }
 
     async function* emptyGen(): AsyncIterable<AgentEvent> {}

@@ -42,4 +42,16 @@ describe("NodeWorktreeManager", () => {
     const result = await mgr.merge("merge-branch")
     expect(result.success).toBe(true)
   })
+
+  it("cleanupAll removes all worktrees in .worktrees dir", async () => {
+    await mgr.create("cleanup-a")
+    await mgr.create("cleanup-b")
+    expect(await mgr.exists("cleanup-a")).toBe(true)
+    expect(await mgr.exists("cleanup-b")).toBe(true)
+
+    await mgr.cleanupAll()
+
+    expect(await mgr.exists("cleanup-a")).toBe(false)
+    expect(await mgr.exists("cleanup-b")).toBe(false)
+  })
 })
