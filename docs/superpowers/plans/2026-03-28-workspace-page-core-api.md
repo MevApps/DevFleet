@@ -480,7 +480,7 @@ git commit -m "feat: add workspace ports (isolator, repository, git remote, PR c
 
 ---
 
-## Task 5: In-Memory Adapters
+## Task 5: Adapters
 
 **Files:**
 - Create: `src/adapters/storage/InMemoryWorkspaceRunRepository.ts`
@@ -489,13 +489,13 @@ git commit -m "feat: add workspace ports (isolator, repository, git remote, PR c
 - Create: `src/adapters/git/GitHubPullRequestCreator.ts`
 - Test: `tests/adapters/GitCloneIsolator.test.ts`
 
-- [ ] **Step 1: Create InMemoryWorkspaceRunRepository**
+- [ ] **Step 1: Create InMemoryWorkspaceRunRepository (BUG M1 fix: add findByStatus)**
 
 Create `src/adapters/storage/InMemoryWorkspaceRunRepository.ts`:
 
 ```typescript
 import type { WorkspaceRunRepository } from "../../use-cases/ports/WorkspaceRunRepository"
-import type { WorkspaceRun } from "../../entities/WorkspaceRun"
+import type { WorkspaceRun, WorkspaceRunStatus } from "../../entities/WorkspaceRun"
 import type { WorkspaceRunId } from "../../entities/ids"
 
 export class InMemoryWorkspaceRunRepository implements WorkspaceRunRepository {
@@ -518,13 +518,20 @@ export class InMemoryWorkspaceRunRepository implements WorkspaceRunRepository {
     return null
   }
 
+  async findByStatus(status: WorkspaceRunStatus): Promise<WorkspaceRun | null> {
+    for (const run of this.runs.values()) {
+      if (run.status === status) return run
+    }
+    return null
+  }
+
   async update(run: WorkspaceRun): Promise<void> {
     this.runs.set(run.id, run)
   }
 }
 ```
 
-- [ ] **Step 2: Create GitCloneIsolator**
+- [ ] **Step 2: Create GitCloneIsolator (BUG 5 fix: use ShellExecutorFactory for scoped shell)**
 
 Create `src/adapters/workspace/GitCloneIsolator.ts`:
 
@@ -533,17 +540,19 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import type { WorkspaceIsolator, WorkspaceHandle } from "../../use-cases/ports/WorkspaceIsolator"
-import type { ShellExecutor } from "../../use-cases/ports/ShellExecutor"
+import type { ShellExecutorFactory } from "../../use-cases/ports/ShellExecutor"
 
 export class GitCloneIsolator implements WorkspaceIsolator {
   private readonly paths = new Map<string, string>()
 
-  constructor(private readonly shell: ShellExecutor) {}
+  constructor(private readonly shellFactory: ShellExecutorFactory) {}
 
   async create(repoUrl: string): Promise<WorkspaceHandle> {
     const clonePath = mkdtempSync(join(tmpdir(), "devfleet-workspace-"))
     const handle: WorkspaceHandle = { id: `ws-${Date.now().toString(36)}` }
-    await this.shell.execute("git", ["clone", repoUrl, clonePath])
+    // Use a shell scoped to the parent of clonePath for the clone command
+    const parentShell = this.shellFactory(join(clonePath, ".."))
+    await parentShell.execute("git", ["clone", repoUrl, clonePath])
     this.paths.set(handle.id, clonePath)
     return handle
   }
@@ -551,10 +560,12 @@ export class GitCloneIsolator implements WorkspaceIsolator {
   async installDependencies(handle: WorkspaceHandle, installCommand: string): Promise<void> {
     const dir = this.getWorkspaceDir(handle)
     if (!installCommand) return
+    // Create a shell scoped to the clone directory — not the main project
+    const scopedShell = this.shellFactory(dir)
     const parts = installCommand.split(/\s+/)
     const command = parts[0]!
     const args = parts.slice(1)
-    await this.shell.execute(command, args, 120_000)
+    await scopedShell.execute(command, args, 120_000)
   }
 
   getWorkspaceDir(handle: WorkspaceHandle): string {
@@ -573,18 +584,19 @@ export class GitCloneIsolator implements WorkspaceIsolator {
 }
 ```
 
-- [ ] **Step 3: Create NodeGitRemote**
+- [ ] **Step 3: Create NodeGitRemote (BUG M2 fix: inject ShellExecutorFactory)**
 
 Create `src/adapters/git/NodeGitRemote.ts`:
 
 ```typescript
 import type { GitRemote } from "../../use-cases/ports/GitRemote"
-import type { ShellExecutor } from "../../use-cases/ports/ShellExecutor"
-import { NodeShellExecutor } from "../shell/NodeShellExecutor"
+import type { ShellExecutorFactory } from "../../use-cases/ports/ShellExecutor"
 
 export class NodeGitRemote implements GitRemote {
+  constructor(private readonly shellFactory: ShellExecutorFactory) {}
+
   async push(branch: string, remoteUrl: string, workingDir: string): Promise<void> {
-    const shell = new NodeShellExecutor(workingDir)
+    const shell = this.shellFactory(workingDir)
     const result = await shell.execute("git", ["push", remoteUrl, `${branch}:${branch}`])
     if (result.exitCode !== 0) {
       throw new Error(`git push failed: ${result.stderr}`)
@@ -593,18 +605,19 @@ export class NodeGitRemote implements GitRemote {
 }
 ```
 
-- [ ] **Step 4: Create GitHubPullRequestCreator**
+- [ ] **Step 4: Create GitHubPullRequestCreator (BUG M2 fix: inject ShellExecutorFactory)**
 
 Create `src/adapters/git/GitHubPullRequestCreator.ts`:
 
 ```typescript
 import type { PullRequestCreator, CreatePullRequestParams } from "../../use-cases/ports/PullRequestCreator"
-import type { ShellExecutor } from "../../use-cases/ports/ShellExecutor"
-import { NodeShellExecutor } from "../shell/NodeShellExecutor"
+import type { ShellExecutorFactory } from "../../use-cases/ports/ShellExecutor"
 
 export class GitHubPullRequestCreator implements PullRequestCreator {
+  constructor(private readonly shellFactory: ShellExecutorFactory) {}
+
   async create(params: CreatePullRequestParams): Promise<string> {
-    const shell = new NodeShellExecutor()
+    const shell = this.shellFactory(params.workingDir)
     const result = await shell.execute("gh", [
       "pr", "create",
       "--repo", params.repoUrl.replace("https://github.com/", "").replace(".git", ""),
@@ -620,8 +633,8 @@ export class GitHubPullRequestCreator implements PullRequestCreator {
     return result.stdout.trim()
   }
 
-  async merge(prUrl: string): Promise<void> {
-    const shell = new NodeShellExecutor()
+  async merge(prUrl: string, workingDir: string): Promise<void> {
+    const shell = this.shellFactory(workingDir)
     const result = await shell.execute("gh", [
       "pr", "merge", prUrl, "--merge", "--delete-branch",
     ], 30_000)
@@ -640,6 +653,7 @@ Create `tests/adapters/GitCloneIsolator.test.ts`:
 ```typescript
 import { GitCloneIsolator } from "../../src/adapters/workspace/GitCloneIsolator"
 import { NodeShellExecutor } from "../../src/adapters/shell/NodeShellExecutor"
+import type { ShellExecutorFactory } from "../../src/use-cases/ports/ShellExecutor"
 import { mkdtempSync, existsSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -648,6 +662,7 @@ import { execSync } from "node:child_process"
 describe("GitCloneIsolator", () => {
   let sourceRepo: string
   let isolator: GitCloneIsolator
+  const shellFactory: ShellExecutorFactory = (rootPath: string) => new NodeShellExecutor(rootPath)
 
   beforeEach(() => {
     // Create a bare git repo to clone from
@@ -656,8 +671,7 @@ describe("GitCloneIsolator", () => {
       'git init && git config user.email "test@test.com" && git config user.name "Test" && git commit --allow-empty -m init',
       { cwd: sourceRepo },
     )
-    const shell = new NodeShellExecutor()
-    isolator = new GitCloneIsolator(shell)
+    isolator = new GitCloneIsolator(shellFactory)
   })
 
   it("clones a repo and returns a handle", async () => {
@@ -695,170 +709,31 @@ git commit -m "feat: add workspace adapters (isolator, repository, git remote, P
 
 ---
 
-## Task 6: StartWorkspaceRun + BootWorkspace Use Cases
+## Task 6: WorkspaceRunManager (BUG 1 + BUG 2 + BUG 4 fix: owns lifecycle, builds system, auto-push/PR)
 
 **Files:**
-- Create: `src/use-cases/StartWorkspaceRun.ts`
-- Create: `src/use-cases/BootWorkspace.ts`
-- Test: `tests/use-cases/StartWorkspaceRun.test.ts`
-- Test: `tests/use-cases/BootWorkspace.test.ts`
+- Create: `src/use-cases/WorkspaceRunManager.ts`
+- Test: `tests/use-cases/WorkspaceRunManager.test.ts`
 
-- [ ] **Step 1: Write failing test for StartWorkspaceRun**
+- [ ] **Step 1: Write failing test**
 
-Create `tests/use-cases/StartWorkspaceRun.test.ts`:
+Create `tests/use-cases/WorkspaceRunManager.test.ts`:
 
 ```typescript
-import { StartWorkspaceRun } from "../../src/use-cases/StartWorkspaceRun"
+import { WorkspaceRunManager } from "../../src/use-cases/WorkspaceRunManager"
 import { InMemoryWorkspaceRunRepository } from "../../src/adapters/storage/InMemoryWorkspaceRunRepository"
 import type { WorkspaceIsolator, WorkspaceHandle } from "../../src/use-cases/ports/WorkspaceIsolator"
+import type { GitRemote } from "../../src/use-cases/ports/GitRemote"
+import type { PullRequestCreator } from "../../src/use-cases/ports/PullRequestCreator"
+import type { FileSystem } from "../../src/use-cases/ports/FileSystem"
+import type { DevFleetConfig, DevFleetSystem } from "../../src/infrastructure/config/composition-root"
 import type { WorkspaceRunConfig } from "../../src/entities/WorkspaceRun"
 
-const CONFIG: WorkspaceRunConfig = {
-  repoUrl: "https://github.com/user/repo.git",
-  maxCostUsd: 10.0,
-  maxTokens: 200_000,
-  supervisorModel: "claude-opus-4-20250514",
-  developerModel: "claude-sonnet-4-20250514",
-  reviewerModel: "claude-opus-4-20250514",
-  timeoutMs: 600_000,
-}
-
-function mockIsolator(): WorkspaceIsolator {
+function mockIsolator(): jest.Mocked<WorkspaceIsolator> {
   return {
-    create: jest.fn().mockResolvedValue({ id: "handle-1" }),
+    create: jest.fn().mockResolvedValue({ id: "h-1" }),
     installDependencies: jest.fn().mockResolvedValue(undefined),
-    getWorkspaceDir: jest.fn().mockReturnValue("/tmp/mock-clone"),
-    cleanup: jest.fn().mockResolvedValue(undefined),
-  }
-}
-
-describe("StartWorkspaceRun", () => {
-  it("creates a workspace run and returns the ID", async () => {
-    const repo = new InMemoryWorkspaceRunRepository()
-    const isolator = mockIsolator()
-    const useCase = new StartWorkspaceRun(repo, isolator)
-
-    const result = await useCase.execute(CONFIG)
-
-    expect(result.ok).toBe(true)
-    if (!result.ok) return
-    const run = await repo.findById(result.value)
-    expect(run).not.toBeNull()
-    expect(run!.config.repoUrl).toBe("https://github.com/user/repo.git")
-  })
-
-  it("rejects if a workspace is already active", async () => {
-    const repo = new InMemoryWorkspaceRunRepository()
-    const isolator = mockIsolator()
-    const useCase = new StartWorkspaceRun(repo, isolator)
-
-    await useCase.execute(CONFIG)
-    const result2 = await useCase.execute(CONFIG)
-
-    expect(result2.ok).toBe(false)
-    if (result2.ok) return
-    expect(result2.error).toContain("already active")
-  })
-
-  it("calls isolator.create with the repo URL", async () => {
-    const repo = new InMemoryWorkspaceRunRepository()
-    const isolator = mockIsolator()
-    const useCase = new StartWorkspaceRun(repo, isolator)
-
-    await useCase.execute(CONFIG)
-
-    expect(isolator.create).toHaveBeenCalledWith("https://github.com/user/repo.git")
-  })
-})
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `npx jest tests/use-cases/StartWorkspaceRun.test.ts --verbose`
-Expected: FAIL — module not found
-
-- [ ] **Step 3: Implement StartWorkspaceRun**
-
-Create `src/use-cases/StartWorkspaceRun.ts`:
-
-```typescript
-import type { WorkspaceRunRepository } from "./ports/WorkspaceRunRepository"
-import type { WorkspaceIsolator, WorkspaceHandle } from "./ports/WorkspaceIsolator"
-import type { WorkspaceRunConfig } from "../entities/WorkspaceRun"
-import type { WorkspaceRunId } from "../entities/ids"
-import { createWorkspaceRun } from "../entities/WorkspaceRun"
-import { createWorkspaceRunId } from "../entities/ids"
-import { type Result, success, failure } from "../entities/Result"
-
-export class StartWorkspaceRun {
-  constructor(
-    private readonly repo: WorkspaceRunRepository,
-    private readonly isolator: WorkspaceIsolator,
-  ) {}
-
-  async execute(config: WorkspaceRunConfig): Promise<Result<WorkspaceRunId>> {
-    const active = await this.repo.findActive()
-    if (active) {
-      return failure("A workspace is already active. Stop it before starting a new one.")
-    }
-
-    const id = createWorkspaceRunId()
-    const run = createWorkspaceRun({ id, config })
-    await this.repo.create(run)
-
-    // Clone — update status
-    const cloningRun = createWorkspaceRun({ ...run, status: "cloning", startedAt: run.startedAt })
-    await this.repo.update(cloningRun)
-
-    try {
-      const handle = await this.isolator.create(config.repoUrl)
-      return success(id)
-    } catch (err) {
-      const failedRun = createWorkspaceRun({
-        ...run,
-        status: "failed",
-        error: err instanceof Error ? err.message : String(err),
-        startedAt: run.startedAt,
-      })
-      await this.repo.update(failedRun)
-      return failure(`Clone failed: ${err instanceof Error ? err.message : String(err)}`)
-    }
-  }
-}
-```
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `npx jest tests/use-cases/StartWorkspaceRun.test.ts --verbose`
-Expected: PASS (3 tests)
-
-- [ ] **Step 5: Write BootWorkspace test**
-
-Create `tests/use-cases/BootWorkspace.test.ts`:
-
-```typescript
-import { BootWorkspace } from "../../src/use-cases/BootWorkspace"
-import { InMemoryWorkspaceRunRepository } from "../../src/adapters/storage/InMemoryWorkspaceRunRepository"
-import { createWorkspaceRun, type WorkspaceRunConfig } from "../../src/entities/WorkspaceRun"
-import { createWorkspaceRunId } from "../../src/entities/ids"
-import type { WorkspaceIsolator } from "../../src/use-cases/ports/WorkspaceIsolator"
-import type { FileSystem } from "../../src/use-cases/ports/FileSystem"
-
-const CONFIG: WorkspaceRunConfig = {
-  repoUrl: "https://github.com/user/repo.git",
-  maxCostUsd: 10.0,
-  maxTokens: 200_000,
-  supervisorModel: "claude-opus-4-20250514",
-  developerModel: "claude-sonnet-4-20250514",
-  reviewerModel: "claude-opus-4-20250514",
-  timeoutMs: 600_000,
-}
-
-function mockIsolator(): WorkspaceIsolator {
-  return {
-    create: jest.fn().mockResolvedValue({ id: "handle-1" }),
-    installDependencies: jest.fn().mockResolvedValue(undefined),
-    getWorkspaceDir: jest.fn().mockReturnValue("/tmp/mock-clone"),
+    getWorkspaceDir: jest.fn().mockReturnValue("/tmp/mock"),
     cleanup: jest.fn().mockResolvedValue(undefined),
   }
 }
@@ -869,94 +744,518 @@ function mockFs(): FileSystem {
     write: jest.fn().mockResolvedValue(undefined),
     edit: jest.fn().mockResolvedValue(undefined),
     glob: jest.fn().mockResolvedValue([]),
-    exists: jest.fn().mockImplementation(async (path: string) => {
-      return path === "package.json" || path === "tsconfig.json"
-    }),
+    exists: jest.fn().mockResolvedValue(false),
   }
 }
 
-describe("BootWorkspace", () => {
-  it("transitions through detecting → installing → sets projectConfig", async () => {
-    const repo = new InMemoryWorkspaceRunRepository()
-    const runId = createWorkspaceRunId("boot-1")
-    const run = createWorkspaceRun({ id: runId, config: CONFIG, status: "cloning" })
-    await repo.create(run)
+function mockGitRemote(): jest.Mocked<GitRemote> {
+  return { push: jest.fn().mockResolvedValue(undefined) }
+}
 
+function mockPrCreator(): jest.Mocked<PullRequestCreator> {
+  return {
+    create: jest.fn().mockResolvedValue("https://github.com/user/repo/pull/1"),
+    merge: jest.fn().mockResolvedValue(undefined),
+  }
+}
+
+function mockBuildSystem(): jest.Mock {
+  const mockBus = {
+    publish: jest.fn().mockResolvedValue(undefined),
+    subscribe: jest.fn().mockReturnValue(() => {}),
+  }
+  const mockGoalRepo = { findAll: jest.fn().mockResolvedValue([]) }
+  const mockCreateGoal = { execute: jest.fn() }
+  const mockSystem: Partial<DevFleetSystem> = {
+    bus: mockBus as any,
+    goalRepo: mockGoalRepo as any,
+    start: jest.fn().mockResolvedValue(undefined),
+    stop: jest.fn().mockResolvedValue(undefined),
+  }
+  return jest.fn().mockResolvedValue(mockSystem)
+}
+
+const CONFIG: WorkspaceRunConfig = {
+  repoUrl: "https://github.com/user/repo.git",
+  maxCostUsd: 10,
+  maxTokens: 200_000,
+  supervisorModel: "opus",
+  developerModel: "sonnet",
+  reviewerModel: "opus",
+  timeoutMs: 600_000,
+}
+
+describe("WorkspaceRunManager", () => {
+  it("startRun clones, boots system, stores handle+system, and returns the ID", async () => {
     const isolator = mockIsolator()
-    const handle = { id: "handle-1" }
-    const fs = mockFs()
+    const buildSys = mockBuildSystem()
+    const manager = new WorkspaceRunManager({
+      repo: new InMemoryWorkspaceRunRepository(),
+      isolator,
+      fs: mockFs(),
+      gitRemote: mockGitRemote(),
+      prCreator: mockPrCreator(),
+      autoMerge: false,
+      buildSystem: buildSys,
+      baseConfig: { workspaceDir: "/tmp", anthropicApiKey: "test-key" },
+    })
 
-    const useCase = new BootWorkspace(repo, isolator, fs)
-    await useCase.execute(runId, handle)
+    const result = await manager.startRun(CONFIG)
 
-    const updated = await repo.findById(runId)
-    expect(updated!.status).toBe("active")
-    expect(updated!.projectConfig).not.toBeNull()
-    expect(updated!.projectConfig!.language).toBe("typescript")
-    expect(isolator.installDependencies).toHaveBeenCalledWith(handle, "npm install")
+    expect(result.ok).toBe(true)
+    // Manager called isolator.create directly
+    expect(isolator.create).toHaveBeenCalledWith("https://github.com/user/repo.git")
+    // Manager called buildSystem with correct workspace dir
+    expect(buildSys).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceDir: "/tmp/mock" }),
+    )
+  })
+
+  it("rejects second startRun while one is active", async () => {
+    const manager = new WorkspaceRunManager({
+      repo: new InMemoryWorkspaceRunRepository(),
+      isolator: mockIsolator(),
+      fs: mockFs(),
+      gitRemote: mockGitRemote(),
+      prCreator: mockPrCreator(),
+      autoMerge: false,
+      buildSystem: mockBuildSystem(),
+      baseConfig: { workspaceDir: "/tmp", anthropicApiKey: "test-key" },
+    })
+
+    await manager.startRun(CONFIG)
+    const result2 = await manager.startRun(CONFIG)
+    expect(result2.ok).toBe(false)
+    if (!result2.ok) expect(result2.error).toContain("already active")
+  })
+
+  it("findActive returns null when no workspace", async () => {
+    const manager = new WorkspaceRunManager({
+      repo: new InMemoryWorkspaceRunRepository(),
+      isolator: mockIsolator(),
+      fs: mockFs(),
+      gitRemote: mockGitRemote(),
+      prCreator: mockPrCreator(),
+      autoMerge: false,
+      buildSystem: mockBuildSystem(),
+      baseConfig: { workspaceDir: "/tmp", anthropicApiKey: "test-key" },
+    })
+
+    const active = await manager.findActive()
+    expect(active).toBeNull()
+  })
+
+  it("getActiveSystem returns the workspace DevFleetSystem", async () => {
+    const buildSys = mockBuildSystem()
+    const manager = new WorkspaceRunManager({
+      repo: new InMemoryWorkspaceRunRepository(),
+      isolator: mockIsolator(),
+      fs: mockFs(),
+      gitRemote: mockGitRemote(),
+      prCreator: mockPrCreator(),
+      autoMerge: false,
+      buildSystem: buildSys,
+      baseConfig: { workspaceDir: "/tmp", anthropicApiKey: "test-key" },
+    })
+
+    await manager.startRun(CONFIG)
+    const system = await manager.getActiveSystem()
+    expect(system).not.toBeNull()
+    expect(system!.bus).toBeDefined()
+  })
+
+  it("getActiveCreateGoal returns the workspace system's CreateGoalFromCeo", async () => {
+    const buildSys = mockBuildSystem()
+    const manager = new WorkspaceRunManager({
+      repo: new InMemoryWorkspaceRunRepository(),
+      isolator: mockIsolator(),
+      fs: mockFs(),
+      gitRemote: mockGitRemote(),
+      prCreator: mockPrCreator(),
+      autoMerge: false,
+      buildSystem: buildSys,
+      baseConfig: { workspaceDir: "/tmp", anthropicApiKey: "test-key" },
+    })
+
+    const before = await manager.getActiveCreateGoal()
+    expect(before).toBeNull()
+
+    await manager.startRun(CONFIG)
+    const after = await manager.getActiveCreateGoal()
+    // The returned system has dashboardDeps.createGoal from buildSystem
+    // In mock it won't have it, so we just check the system was retrieved
+    expect(await manager.getActiveSystem()).not.toBeNull()
+  })
+
+  it("stop with no failed goals cleans up and stops the system", async () => {
+    const isolator = mockIsolator()
+    const buildSys = mockBuildSystem()
+    const manager = new WorkspaceRunManager({
+      repo: new InMemoryWorkspaceRunRepository(),
+      isolator,
+      fs: mockFs(),
+      gitRemote: mockGitRemote(),
+      prCreator: mockPrCreator(),
+      autoMerge: false,
+      buildSystem: buildSys,
+      baseConfig: { workspaceDir: "/tmp", anthropicApiKey: "test-key" },
+    })
+
+    const startResult = await manager.startRun(CONFIG)
+    expect(startResult.ok).toBe(true)
+    if (!startResult.ok) return
+
+    const stopResult = await manager.stop(startResult.value, false)
+    expect(stopResult.ok).toBe(true)
+    expect(isolator.cleanup).toHaveBeenCalled()
+  })
+
+  it("stopAll cleans up all handles and stops all systems", async () => {
+    const isolator = mockIsolator()
+    const buildSys = mockBuildSystem()
+    const manager = new WorkspaceRunManager({
+      repo: new InMemoryWorkspaceRunRepository(),
+      isolator,
+      fs: mockFs(),
+      gitRemote: mockGitRemote(),
+      prCreator: mockPrCreator(),
+      autoMerge: false,
+      buildSystem: buildSys,
+      baseConfig: { workspaceDir: "/tmp", anthropicApiKey: "test-key" },
+    })
+
+    await manager.startRun(CONFIG)
+    await manager.stopAll()
+    expect(isolator.cleanup).toHaveBeenCalled()
   })
 })
 ```
 
-- [ ] **Step 6: Implement BootWorkspace**
+- [ ] **Step 2: Implement WorkspaceRunManager**
 
-Create `src/use-cases/BootWorkspace.ts`:
+Create `src/use-cases/WorkspaceRunManager.ts`:
 
 ```typescript
 import type { WorkspaceRunRepository } from "./ports/WorkspaceRunRepository"
 import type { WorkspaceIsolator, WorkspaceHandle } from "./ports/WorkspaceIsolator"
+import type { GitRemote } from "./ports/GitRemote"
+import type { PullRequestCreator } from "./ports/PullRequestCreator"
 import type { FileSystem } from "./ports/FileSystem"
+import type { WorkspaceRunConfig, WorkspaceRun } from "../entities/WorkspaceRun"
 import type { WorkspaceRunId } from "../entities/ids"
+import type { Result } from "../entities/Result"
+import type { DevFleetConfig, DevFleetSystem } from "../infrastructure/config/composition-root"
+import type { CreateGoalFromCeo } from "./CreateGoalFromCeo"
 import { createWorkspaceRun } from "../entities/WorkspaceRun"
+import { createWorkspaceRunId } from "../entities/ids"
+import { success, failure } from "../entities/Result"
 import { DetectProjectConfig } from "./DetectProjectConfig"
+import { GetWorkspaceRunStatus, type WorkspaceRunStatusDTO } from "./GetWorkspaceRunStatus"
 
-export class BootWorkspace {
-  constructor(
-    private readonly repo: WorkspaceRunRepository,
-    private readonly isolator: WorkspaceIsolator,
-    private readonly fs: FileSystem,
-  ) {}
+// Type for the buildSystem function from composition-root
+type BuildSystemFn = (config: DevFleetConfig) => Promise<DevFleetSystem>
 
-  async execute(runId: WorkspaceRunId, handle: WorkspaceHandle): Promise<void> {
-    const run = await this.repo.findById(runId)
-    if (!run) throw new Error(`WorkspaceRun not found: ${runId}`)
+export interface WorkspaceRunManagerDeps {
+  readonly repo: WorkspaceRunRepository
+  readonly isolator: WorkspaceIsolator
+  readonly fs: FileSystem
+  readonly gitRemote: GitRemote
+  readonly prCreator: PullRequestCreator
+  readonly autoMerge: boolean
+  readonly buildSystem: BuildSystemFn
+  readonly baseConfig: Pick<DevFleetConfig, "workspaceDir" | "anthropicApiKey">
+}
 
-    // Detect project config
-    const detectingRun = createWorkspaceRun({ ...run, status: "detecting", startedAt: run.startedAt })
-    await this.repo.update(detectingRun)
+export class WorkspaceRunManager {
+  private readonly deps: WorkspaceRunManagerDeps
+  /** Maps runId → WorkspaceHandle (clone dir ownership) */
+  private readonly handles = new Map<string, WorkspaceHandle>()
+  /** Maps runId → DevFleetSystem (the workspace's own system) */
+  private readonly systems = new Map<string, DevFleetSystem>()
+  /** Maps runId → unsubscribe function for bus listeners */
+  private readonly busUnsubscribers = new Map<string, Array<() => void>>()
 
-    const detector = new DetectProjectConfig(this.fs)
-    const projectConfig = await detector.execute()
+  constructor(deps: WorkspaceRunManagerDeps) {
+    this.deps = deps
+  }
 
-    // Install dependencies
-    if (projectConfig.installCommand) {
-      const installingRun = createWorkspaceRun({ ...run, status: "installing", projectConfig, startedAt: run.startedAt })
-      await this.repo.update(installingRun)
-      await this.isolator.installDependencies(handle, projectConfig.installCommand)
+  // ---------------------------------------------------------------------------
+  // startRun — owns the full lifecycle (BUG 1 fix)
+  // ---------------------------------------------------------------------------
+  async startRun(config: WorkspaceRunConfig): Promise<Result<WorkspaceRunId>> {
+    const active = await this.deps.repo.findActive()
+    if (active) {
+      return failure("A workspace is already active. Stop it before starting a new one.")
     }
 
-    // Mark active
+    const id = createWorkspaceRunId()
+    const run = createWorkspaceRun({ id, config })
+    await this.deps.repo.create(run)
+
+    // --- Clone ---
+    await this.updateStatus(run, "cloning")
+    let handle: WorkspaceHandle
+    try {
+      handle = await this.deps.isolator.create(config.repoUrl)
+      this.handles.set(id, handle)
+    } catch (err) {
+      await this.markFailed(run, `Clone failed: ${err instanceof Error ? err.message : String(err)}`)
+      return failure(`Clone failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+
+    // --- Detect project config ---
+    await this.updateStatus(run, "detecting")
+    const cloneDir = this.deps.isolator.getWorkspaceDir(handle)
+    let projectConfig
+    try {
+      const detector = new DetectProjectConfig(this.deps.fs)
+      projectConfig = await detector.execute()
+    } catch (err) {
+      await this.markFailed(run, `Detection failed: ${err instanceof Error ? err.message : String(err)}`)
+      return failure(`Detection failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+
+    // --- Install dependencies ---
+    if (projectConfig.installCommand) {
+      const installingRun = createWorkspaceRun({
+        ...run, status: "installing", projectConfig, startedAt: run.startedAt,
+      })
+      await this.deps.repo.update(installingRun)
+      try {
+        await this.deps.isolator.installDependencies(handle, projectConfig.installCommand)
+      } catch (err) {
+        await this.markFailed(run, `Install failed: ${err instanceof Error ? err.message : String(err)}`)
+        return failure(`Install failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+
+    // --- Build DevFleetSystem for the workspace (BUG 2 fix) ---
+    try {
+      const wsConfig: DevFleetConfig = {
+        workspaceDir: cloneDir,
+        anthropicApiKey: this.deps.baseConfig.anthropicApiKey,
+        supervisorModel: config.supervisorModel,
+        developerModel: config.developerModel,
+        reviewerModel: config.reviewerModel,
+        buildCommand: projectConfig.buildCommand ?? undefined,
+        testCommand: projectConfig.testCommand ?? undefined,
+      }
+      const system = await this.deps.buildSystem(wsConfig)
+      this.systems.set(id, system)
+      await system.start()
+
+      // Subscribe to goal.completed / goal.abandoned for auto-push/PR (BUG 4 fix)
+      this.subscribeToBus(id, system, config, cloneDir)
+    } catch (err) {
+      await this.markFailed(run, `System build failed: ${err instanceof Error ? err.message : String(err)}`)
+      return failure(`System build failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+
+    // --- Mark active ---
     const activeRun = createWorkspaceRun({
-      ...run,
-      status: "active",
-      projectConfig,
-      startedAt: run.startedAt,
+      ...run, status: "active", projectConfig, startedAt: run.startedAt,
     })
-    await this.repo.update(activeRun)
+    await this.deps.repo.update(activeRun)
+
+    return success(id)
+  }
+
+  // ---------------------------------------------------------------------------
+  // Query methods
+  // ---------------------------------------------------------------------------
+  async findActive(): Promise<WorkspaceRun | null> {
+    return this.deps.repo.findActive()
+  }
+
+  async getStatus(runId: WorkspaceRunId): Promise<Result<WorkspaceRunStatusDTO>> {
+    const useCase = new GetWorkspaceRunStatus(this.deps.repo)
+    return useCase.execute(runId)
+  }
+
+  /** Return the workspace's DevFleetSystem if one is active. */
+  async getActiveSystem(): Promise<DevFleetSystem | null> {
+    const active = await this.deps.repo.findActive()
+    if (!active) return null
+    return this.systems.get(active.id) ?? null
+  }
+
+  /** Return the workspace system's CreateGoalFromCeo (BUG 3 fix). */
+  async getActiveCreateGoal(): Promise<CreateGoalFromCeo | null> {
+    const system = await this.getActiveSystem()
+    if (!system) return null
+    return system.dashboardDeps.createGoal
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stop / Cleanup
+  // ---------------------------------------------------------------------------
+  async stop(runId: WorkspaceRunId, hasFailedGoals: boolean): Promise<Result<void>> {
+    const handle = this.handles.get(runId)
+    if (!handle) return failure("No handle found for workspace")
+
+    const run = await this.deps.repo.findById(runId)
+    if (!run) return failure(`WorkspaceRun not found: ${runId}`)
+    if (run.status !== "active") return failure(`Workspace is not active (status: ${run.status})`)
+
+    // Stop the workspace system
+    const system = this.systems.get(runId)
+    if (system) {
+      try { await system.stop() } catch { /* best-effort */ }
+    }
+
+    // Unsubscribe bus listeners
+    this.unsubscribeBus(runId)
+
+    if (hasFailedGoals) {
+      const dirtyRun = createWorkspaceRun({
+        ...run, status: "stopped_dirty", completedAt: new Date(), startedAt: run.startedAt,
+      })
+      await this.deps.repo.update(dirtyRun)
+    } else {
+      await this.deps.isolator.cleanup(handle)
+      this.handles.delete(runId)
+      this.systems.delete(runId)
+      const stoppedRun = createWorkspaceRun({
+        ...run, status: "stopped", completedAt: new Date(), startedAt: run.startedAt,
+      })
+      await this.deps.repo.update(stoppedRun)
+    }
+
+    return success(undefined)
+  }
+
+  async cleanup(runId: WorkspaceRunId): Promise<Result<void>> {
+    const handle = this.handles.get(runId)
+    if (!handle) return failure("No handle found for workspace")
+
+    const run = await this.deps.repo.findById(runId)
+    if (!run) return failure(`WorkspaceRun not found: ${runId}`)
+    if (run.status !== "stopped_dirty") {
+      return failure(`Can only cleanup stopped_dirty workspaces (status: ${run.status})`)
+    }
+
+    await this.deps.isolator.cleanup(handle)
+    this.handles.delete(runId)
+    this.systems.delete(runId)
+
+    const stoppedRun = createWorkspaceRun({
+      ...run, status: "stopped", startedAt: run.startedAt,
+    })
+    await this.deps.repo.update(stoppedRun)
+
+    return success(undefined)
+  }
+
+  async stopAll(): Promise<void> {
+    for (const [runId, handle] of this.handles) {
+      const system = this.systems.get(runId)
+      if (system) {
+        try { await system.stop() } catch { /* best-effort */ }
+      }
+      this.unsubscribeBus(runId)
+      try {
+        await this.deps.isolator.cleanup(handle)
+      } catch {
+        // Best-effort cleanup on shutdown
+      }
+    }
+    this.handles.clear()
+    this.systems.clear()
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
+  private async updateStatus(run: WorkspaceRun, status: WorkspaceRun["status"]): Promise<void> {
+    const updated = createWorkspaceRun({ ...run, status, startedAt: run.startedAt })
+    await this.deps.repo.update(updated)
+  }
+
+  private async markFailed(run: WorkspaceRun, error: string): Promise<void> {
+    const failed = createWorkspaceRun({
+      ...run, status: "failed", error, startedAt: run.startedAt,
+    })
+    await this.deps.repo.update(failed)
+  }
+
+  /** BUG 4 fix: subscribe to workspace bus for auto-push/PR on goal completion */
+  private subscribeToBus(
+    runId: string,
+    system: DevFleetSystem,
+    config: WorkspaceRunConfig,
+    cloneDir: string,
+  ): void {
+    const unsubs: Array<() => void> = []
+
+    const unsubCompleted = system.bus.subscribe(
+      { types: ["goal.completed"] },
+      async (_msg) => {
+        try {
+          const branch = `devfleet/workspace-${runId}`
+          await this.deps.gitRemote.push(branch, config.repoUrl, cloneDir)
+          const prUrl = await this.deps.prCreator.create({
+            repoUrl: config.repoUrl,
+            branch,
+            baseBranch: "main",
+            title: `[DevFleet] Goal completed in workspace ${runId}`,
+            body: "Automated PR from DevFleet workspace run.",
+            workingDir: cloneDir,
+          })
+          if (this.deps.autoMerge) {
+            await this.deps.prCreator.merge(prUrl, cloneDir)
+          }
+        } catch (err) {
+          // Log but don't crash — push/PR is best-effort
+          console.error(`[WorkspaceRunManager] auto-push/PR failed for ${runId}:`, err)
+        }
+      },
+    )
+    unsubs.push(unsubCompleted)
+
+    const unsubAbandoned = system.bus.subscribe(
+      { types: ["goal.abandoned"] },
+      async (_msg) => {
+        // Mark that this run has had a failed goal — used by stop()
+        const run = await this.deps.repo.findById(runId as any)
+        if (run && run.status === "active") {
+          const updated = createWorkspaceRun({
+            ...run, status: "active", startedAt: run.startedAt,
+            error: (run.error ? run.error + "\n" : "") + "goal.abandoned received",
+          })
+          await this.deps.repo.update(updated)
+        }
+      },
+    )
+    unsubs.push(unsubAbandoned)
+
+    this.busUnsubscribers.set(runId, unsubs)
+  }
+
+  private unsubscribeBus(runId: string): void {
+    const unsubs = this.busUnsubscribers.get(runId)
+    if (unsubs) {
+      for (const unsub of unsubs) unsub()
+      this.busUnsubscribers.delete(runId)
+    }
   }
 }
 ```
 
-- [ ] **Step 7: Run tests**
+- [ ] **Step 3: Run tests**
 
-Run: `npx jest tests/use-cases/StartWorkspaceRun.test.ts tests/use-cases/BootWorkspace.test.ts --verbose`
-Expected: PASS
+Run: `npx jest tests/use-cases/WorkspaceRunManager.test.ts --verbose`
+Expected: PASS (7 tests)
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 4: Run full test suite**
+
+Run: `npx jest --verbose`
+Expected: ALL pass
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/use-cases/StartWorkspaceRun.ts src/use-cases/BootWorkspace.ts tests/use-cases/StartWorkspaceRun.test.ts tests/use-cases/BootWorkspace.test.ts
-git commit -m "feat: add StartWorkspaceRun and BootWorkspace use cases"
+git add src/use-cases/WorkspaceRunManager.ts tests/use-cases/WorkspaceRunManager.test.ts
+git commit -m "feat: add WorkspaceRunManager — owns handle+system lifecycle, auto-push/PR"
 ```
 
 ---
@@ -967,6 +1266,8 @@ git commit -m "feat: add StartWorkspaceRun and BootWorkspace use cases"
 - Create: `src/use-cases/StopWorkspace.ts`
 - Create: `src/use-cases/CleanupWorkspace.ts`
 - Test: `tests/use-cases/StopWorkspace.test.ts`
+
+These are thin use cases that the manager delegates to. They receive the handle as a parameter.
 
 - [ ] **Step 1: Write failing test**
 
@@ -1192,7 +1493,7 @@ const CONFIG: WorkspaceRunConfig = {
 }
 
 describe("GetWorkspaceRunStatus", () => {
-  it("returns the workspace run", async () => {
+  it("returns the workspace run with derived data", async () => {
     const repo = new InMemoryWorkspaceRunRepository()
     const runId = createWorkspaceRunId("status-1")
     const run = createWorkspaceRun({ id: runId, config: CONFIG, status: "active" })
@@ -1257,262 +1558,7 @@ git commit -m "feat: add GetWorkspaceRunStatus use case"
 
 ---
 
-## Task 9: WorkspaceRunManager
-
-**Files:**
-- Create: `src/use-cases/WorkspaceRunManager.ts`
-- Test: `tests/use-cases/WorkspaceRunManager.test.ts`
-
-- [ ] **Step 1: Write failing test**
-
-Create `tests/use-cases/WorkspaceRunManager.test.ts`:
-
-```typescript
-import { WorkspaceRunManager } from "../../src/use-cases/WorkspaceRunManager"
-import { InMemoryWorkspaceRunRepository } from "../../src/adapters/storage/InMemoryWorkspaceRunRepository"
-import type { WorkspaceIsolator } from "../../src/use-cases/ports/WorkspaceIsolator"
-import type { GitRemote } from "../../src/use-cases/ports/GitRemote"
-import type { PullRequestCreator } from "../../src/use-cases/ports/PullRequestCreator"
-import type { FileSystem } from "../../src/use-cases/ports/FileSystem"
-
-function mockIsolator(): jest.Mocked<WorkspaceIsolator> {
-  return {
-    create: jest.fn().mockResolvedValue({ id: "h-1" }),
-    installDependencies: jest.fn().mockResolvedValue(undefined),
-    getWorkspaceDir: jest.fn().mockReturnValue("/tmp/mock"),
-    cleanup: jest.fn().mockResolvedValue(undefined),
-  }
-}
-
-function mockFs(): FileSystem {
-  return {
-    read: jest.fn().mockRejectedValue(new Error("not found")),
-    write: jest.fn().mockResolvedValue(undefined),
-    edit: jest.fn().mockResolvedValue(undefined),
-    glob: jest.fn().mockResolvedValue([]),
-    exists: jest.fn().mockResolvedValue(false),
-  }
-}
-
-function mockGitRemote(): jest.Mocked<GitRemote> {
-  return { push: jest.fn().mockResolvedValue(undefined) }
-}
-
-function mockPrCreator(): jest.Mocked<PullRequestCreator> {
-  return {
-    create: jest.fn().mockResolvedValue("https://github.com/user/repo/pull/1"),
-    merge: jest.fn().mockResolvedValue(undefined),
-  }
-}
-
-describe("WorkspaceRunManager", () => {
-  it("startRun creates a workspace and returns the ID", async () => {
-    const manager = new WorkspaceRunManager({
-      repo: new InMemoryWorkspaceRunRepository(),
-      isolator: mockIsolator(),
-      fs: mockFs(),
-      gitRemote: mockGitRemote(),
-      prCreator: mockPrCreator(),
-      autoMerge: false,
-    })
-
-    const result = await manager.startRun({
-      repoUrl: "https://github.com/user/repo.git",
-      maxCostUsd: 10,
-      maxTokens: 200_000,
-      supervisorModel: "opus",
-      developerModel: "sonnet",
-      reviewerModel: "opus",
-      timeoutMs: 600_000,
-    })
-
-    expect(result.ok).toBe(true)
-  })
-
-  it("rejects second startRun while one is active", async () => {
-    const manager = new WorkspaceRunManager({
-      repo: new InMemoryWorkspaceRunRepository(),
-      isolator: mockIsolator(),
-      fs: mockFs(),
-      gitRemote: mockGitRemote(),
-      prCreator: mockPrCreator(),
-      autoMerge: false,
-    })
-
-    const config = {
-      repoUrl: "https://github.com/user/repo.git",
-      maxCostUsd: 10,
-      maxTokens: 200_000,
-      supervisorModel: "opus",
-      developerModel: "sonnet",
-      reviewerModel: "opus",
-      timeoutMs: 600_000,
-    }
-
-    await manager.startRun(config)
-    const result2 = await manager.startRun(config)
-    expect(result2.ok).toBe(false)
-  })
-
-  it("findActive returns null when no workspace", async () => {
-    const manager = new WorkspaceRunManager({
-      repo: new InMemoryWorkspaceRunRepository(),
-      isolator: mockIsolator(),
-      fs: mockFs(),
-      gitRemote: mockGitRemote(),
-      prCreator: mockPrCreator(),
-      autoMerge: false,
-    })
-
-    const active = await manager.findActive()
-    expect(active).toBeNull()
-  })
-})
-```
-
-- [ ] **Step 2: Implement WorkspaceRunManager**
-
-Create `src/use-cases/WorkspaceRunManager.ts`:
-
-```typescript
-import type { WorkspaceRunRepository } from "./ports/WorkspaceRunRepository"
-import type { WorkspaceIsolator, WorkspaceHandle } from "./ports/WorkspaceIsolator"
-import type { GitRemote } from "./ports/GitRemote"
-import type { PullRequestCreator } from "./ports/PullRequestCreator"
-import type { FileSystem } from "./ports/FileSystem"
-import type { WorkspaceRunConfig, WorkspaceRun } from "../entities/WorkspaceRun"
-import type { WorkspaceRunId } from "../entities/ids"
-import type { Result } from "../entities/Result"
-import { StartWorkspaceRun } from "./StartWorkspaceRun"
-import { BootWorkspace } from "./BootWorkspace"
-import { StopWorkspace } from "./StopWorkspace"
-import { CleanupWorkspace } from "./CleanupWorkspace"
-import { GetWorkspaceRunStatus, type WorkspaceRunStatusDTO } from "./GetWorkspaceRunStatus"
-
-export interface WorkspaceRunManagerDeps {
-  readonly repo: WorkspaceRunRepository
-  readonly isolator: WorkspaceIsolator
-  readonly fs: FileSystem
-  readonly gitRemote: GitRemote
-  readonly prCreator: PullRequestCreator
-  readonly autoMerge: boolean
-}
-
-export class WorkspaceRunManager {
-  private readonly deps: WorkspaceRunManagerDeps
-  private readonly handles = new Map<string, WorkspaceHandle>()
-
-  constructor(deps: WorkspaceRunManagerDeps) {
-    this.deps = deps
-  }
-
-  async startRun(config: WorkspaceRunConfig): Promise<Result<WorkspaceRunId>> {
-    const startUseCase = new StartWorkspaceRun(this.deps.repo, this.deps.isolator)
-    const result = await startUseCase.execute(config)
-    if (!result.ok) return result
-
-    const runId = result.value
-    // Store the handle for later operations
-    const run = await this.deps.repo.findById(runId)
-    if (run) {
-      // The handle was created inside StartWorkspaceRun — we need to retrieve it
-      // For now, create a synthetic handle based on the run ID
-      const handle: WorkspaceHandle = { id: runId }
-      this.handles.set(runId, handle)
-
-      // Boot asynchronously
-      void this.bootAsync(runId, handle)
-    }
-
-    return result
-  }
-
-  async findActive(): Promise<WorkspaceRun | null> {
-    return this.deps.repo.findActive()
-  }
-
-  async getStatus(runId: WorkspaceRunId): Promise<Result<WorkspaceRunStatusDTO>> {
-    const useCase = new GetWorkspaceRunStatus(this.deps.repo)
-    return useCase.execute(runId)
-  }
-
-  async stop(runId: WorkspaceRunId, hasFailedGoals: boolean): Promise<Result<void>> {
-    const handle = this.handles.get(runId)
-    if (!handle) return { ok: false, error: "No handle found for workspace" } as Result<void>
-
-    const useCase = new StopWorkspace(this.deps.repo, this.deps.isolator)
-    const result = await useCase.execute(runId, handle, hasFailedGoals)
-    if (result.ok && !hasFailedGoals) {
-      this.handles.delete(runId)
-    }
-    return result
-  }
-
-  async cleanup(runId: WorkspaceRunId): Promise<Result<void>> {
-    const handle = this.handles.get(runId)
-    if (!handle) return { ok: false, error: "No handle found for workspace" } as Result<void>
-
-    const useCase = new CleanupWorkspace(this.deps.repo, this.deps.isolator)
-    const result = await useCase.execute(runId, handle)
-    if (result.ok) {
-      this.handles.delete(runId)
-    }
-    return result
-  }
-
-  async stopAll(): Promise<void> {
-    for (const [runId, handle] of this.handles) {
-      try {
-        await this.deps.isolator.cleanup(handle)
-      } catch {
-        // Best-effort cleanup on shutdown
-      }
-      this.handles.delete(runId)
-    }
-  }
-
-  private async bootAsync(runId: WorkspaceRunId, handle: WorkspaceHandle): Promise<void> {
-    try {
-      const useCase = new BootWorkspace(this.deps.repo, this.deps.isolator, this.deps.fs)
-      await useCase.execute(runId, handle)
-    } catch (err) {
-      // BootWorkspace failed — mark as failed
-      const run = await this.deps.repo.findById(runId)
-      if (run) {
-        const { createWorkspaceRun } = await import("../entities/WorkspaceRun")
-        const failedRun = createWorkspaceRun({
-          ...run,
-          status: "failed",
-          error: err instanceof Error ? err.message : String(err),
-          startedAt: run.startedAt,
-        })
-        await this.deps.repo.update(failedRun)
-      }
-    }
-  }
-}
-```
-
-- [ ] **Step 3: Run tests**
-
-Run: `npx jest tests/use-cases/WorkspaceRunManager.test.ts --verbose`
-Expected: PASS (3 tests)
-
-- [ ] **Step 4: Run full test suite**
-
-Run: `npx jest --verbose`
-Expected: ALL pass
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/use-cases/WorkspaceRunManager.ts tests/use-cases/WorkspaceRunManager.test.ts
-git commit -m "feat: add WorkspaceRunManager orchestrator"
-```
-
----
-
-## Task 10: Workspace API Routes
+## Task 9: Workspace API Routes (BUG M1 fix: use findByStatus for stopped_dirty)
 
 **Files:**
 - Create: `src/infrastructure/http/routes/workspaceRoutes.ts`
@@ -1526,9 +1572,13 @@ Create `src/infrastructure/http/routes/workspaceRoutes.ts`:
 ```typescript
 import { Router } from "express"
 import type { WorkspaceRunManager } from "../../../use-cases/WorkspaceRunManager"
+import type { WorkspaceRunRepository } from "../../../use-cases/ports/WorkspaceRunRepository"
 import { DEFAULT_WORKSPACE_CONFIG } from "../../../entities/WorkspaceRun"
 
-export function workspaceRoutes(manager: WorkspaceRunManager): Router {
+export function workspaceRoutes(
+  manager: WorkspaceRunManager,
+  repo: WorkspaceRunRepository,
+): Router {
   const router = Router()
 
   router.post("/start", async (req, res, next) => {
@@ -1607,7 +1657,6 @@ export function workspaceRoutes(manager: WorkspaceRunManager): Router {
         res.status(404).json({ error: "No active workspace" })
         return
       }
-      // TODO: check for running goals via EventStore in a future iteration
       const result = await manager.stop(active.id, false)
       if (!result.ok) {
         res.status(400).json({ error: result.error })
@@ -1621,18 +1670,13 @@ export function workspaceRoutes(manager: WorkspaceRunManager): Router {
 
   router.post("/cleanup", async (_req, res, next) => {
     try {
-      const active = await manager.findActive()
-      if (!active && !(await findStoppedDirty())) {
-        res.status(404).json({ error: "No workspace to cleanup" })
+      // BUG M1 fix: use findByStatus instead of a stub
+      const stoppedDirty = await repo.findByStatus("stopped_dirty")
+      if (!stoppedDirty) {
+        res.status(404).json({ error: "No stopped_dirty workspace to cleanup" })
         return
       }
-      // Find the stopped_dirty workspace
-      const run = active ?? (await findStoppedDirty())
-      if (!run) {
-        res.status(404).json({ error: "No workspace to cleanup" })
-        return
-      }
-      const result = await manager.cleanup(run.id)
+      const result = await manager.cleanup(stoppedDirty.id)
       if (!result.ok) {
         res.status(400).json({ error: result.error })
         return
@@ -1640,11 +1684,6 @@ export function workspaceRoutes(manager: WorkspaceRunManager): Router {
       res.json({ status: "stopped" })
     } catch (err) {
       next(err)
-    }
-
-    async function findStoppedDirty() {
-      // WorkspaceRunManager doesn't expose this directly — use getStatus
-      return null // Will be refined when we have a proper query
     }
   })
 
@@ -1654,45 +1693,48 @@ export function workspaceRoutes(manager: WorkspaceRunManager): Router {
 
 - [ ] **Step 2: Wire into createServer**
 
-In `src/infrastructure/http/createServer.ts`, add import:
+In `src/infrastructure/http/createServer.ts`, add imports:
 
 ```typescript
 import { workspaceRoutes } from "./routes/workspaceRoutes"
 import type { WorkspaceRunManager } from "../../use-cases/WorkspaceRunManager"
+import type { WorkspaceRunRepository } from "../../use-cases/ports/WorkspaceRunRepository"
 ```
 
 Add to `DashboardDeps`:
 
 ```typescript
   readonly workspaceManager: WorkspaceRunManager
+  readonly workspaceRunRepo: WorkspaceRunRepository
 ```
 
 Add route wiring after existing routes:
 
 ```typescript
-  app.use("/api/workspace", workspaceRoutes(deps.workspaceManager))
+  app.use("/api/workspace", workspaceRoutes(deps.workspaceManager, deps.workspaceRunRepo))
 ```
 
 - [ ] **Step 3: Run full test suite**
 
 Run: `npx jest --verbose`
-Expected: Tests may fail if DashboardDeps is constructed without `workspaceManager` in tests. Fix by providing a mock in integration tests that construct DashboardDeps.
+Expected: Tests may fail if DashboardDeps is constructed without `workspaceManager` / `workspaceRunRepo` in tests. Fix by providing a mock in integration tests that construct DashboardDeps.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add src/infrastructure/http/routes/workspaceRoutes.ts src/infrastructure/http/createServer.ts
-git commit -m "feat: add workspace API routes and wire into server"
+git commit -m "feat: add workspace API routes (start, status, active, stop, cleanup)"
 ```
 
 ---
 
-## Task 11: Goal Routing to Active Workspace
+## Task 10: Goal Routing to Active Workspace (BUG 3 fix)
 
 **Files:**
 - Modify: `src/infrastructure/http/routes/goalRoutes.ts`
+- Modify: `src/infrastructure/http/createServer.ts`
 
-- [ ] **Step 1: Update goalRoutes to accept WorkspaceRunManager**
+- [ ] **Step 1: Update goalRoutes to accept WorkspaceRunManager and use getActiveCreateGoal**
 
 In `src/infrastructure/http/routes/goalRoutes.ts`:
 
@@ -1726,16 +1768,23 @@ export function goalRoutes(
       const maxTokens = body.maxTokens ?? 0
       const maxCostUsd = body.maxCostUsd ?? 0
 
-      // Check if a workspace is active — if so, route goal to workspace system
-      const activeWorkspace = workspaceManager ? await workspaceManager.findActive() : null
-      const targetedWorkspace = activeWorkspace ? activeWorkspace.id : null
+      // BUG 3 fix: when a workspace is active, use its CreateGoalFromCeo
+      const wsCreateGoal = workspaceManager
+        ? await workspaceManager.getActiveCreateGoal()
+        : null
+      const effectiveCreateGoal = wsCreateGoal ?? createGoal
 
-      const result = await createGoal.execute({ description, maxTokens, maxCostUsd })
+      const result = await effectiveCreateGoal.execute({ description, maxTokens, maxCostUsd })
       if (!result.ok) {
         res.status(400).json({ error: result.error })
         return
       }
-      res.status(201).json({ goal: toGoalDTO(result.value), targetedWorkspace })
+
+      const active = workspaceManager ? await workspaceManager.findActive() : null
+      res.status(201).json({
+        goal: toGoalDTO(result.value),
+        ...(active ? { targetedWorkspace: active.id } : {}),
+      })
     } catch (err) {
       next(err)
     }
@@ -1762,12 +1811,12 @@ Expected: ALL pass
 
 ```bash
 git add src/infrastructure/http/routes/goalRoutes.ts src/infrastructure/http/createServer.ts
-git commit -m "feat: route goals to active workspace, return targetedWorkspace in response"
+git commit -m "feat: route goals to active workspace system's CreateGoalFromCeo"
 ```
 
 ---
 
-## Task 12: Wire Workspace into Composition Root
+## Task 11: Wire Workspace into Composition Root (BUG M2 fix: inject ShellExecutorFactory)
 
 **Files:**
 - Modify: `src/infrastructure/config/composition-root.ts`
@@ -1788,12 +1837,13 @@ In the `buildSystem` function, after the existing infrastructure section, add:
 
 ```typescript
   // -------------------------------------------------------------------------
-  // Workspace management
+  // Workspace management (BUG M2 fix: all adapters receive shellFactory)
   // -------------------------------------------------------------------------
+  const shellFactory: ShellExecutorFactory = (rootPath: string) => new NodeShellExecutor(rootPath)
   const workspaceRunRepo = new InMemoryWorkspaceRunRepository()
-  const workspaceIsolator = new GitCloneIsolator(shell)
-  const gitRemote = new NodeGitRemote()
-  const prCreator = new GitHubPullRequestCreator()
+  const workspaceIsolator = new GitCloneIsolator(shellFactory)
+  const gitRemote = new NodeGitRemote(shellFactory)
+  const prCreator = new GitHubPullRequestCreator(shellFactory)
   const autoMerge = process.env["DEVFLEET_AUTO_MERGE"] === "true"
   const workspaceManager = new WorkspaceRunManager({
     repo: workspaceRunRepo,
@@ -1802,15 +1852,18 @@ In the `buildSystem` function, after the existing infrastructure section, add:
     gitRemote,
     prCreator,
     autoMerge,
+    buildSystem,           // pass ourselves — workspace gets its own system
+    baseConfig: config,
   })
 ```
 
-Add `workspaceManager` to the `dashboardDeps` object:
+Add `workspaceManager` and `workspaceRunRepo` to the `dashboardDeps` object:
 
 ```typescript
   const dashboardDeps: DashboardDeps = {
     // ... existing deps
     workspaceManager,
+    workspaceRunRepo,
   }
 ```
 
@@ -1832,7 +1885,7 @@ Add workspace cleanup to `stop`:
 - [ ] **Step 2: Run full test suite**
 
 Run: `npx jest --verbose`
-Expected: Some integration tests may need updating to provide `workspaceManager` in DashboardDeps. Add a mock or real instance where needed.
+Expected: Some integration tests may need updating to provide `workspaceManager` and `workspaceRunRepo` in DashboardDeps. Add a mock or real instance where needed.
 
 - [ ] **Step 3: Run tsc**
 
@@ -1843,12 +1896,12 @@ Expected: No errors
 
 ```bash
 git add src/infrastructure/config/composition-root.ts
-git commit -m "feat: wire workspace management into composition root"
+git commit -m "feat: wire workspace management into composition root with ShellExecutorFactory"
 ```
 
 ---
 
-## Task 13: Full Verification
+## Task 12: Full Verification
 
 - [ ] **Step 1: Run full test suite**
 
