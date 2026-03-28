@@ -1,5 +1,6 @@
 export * from "./AgentExecutor"
 export * from "./AgentRegistry"
+export * from "./AgentSession"
 export * from "./AIProvider"
 export * from "./ArtifactRepository"
 export * from "./EventStore"
