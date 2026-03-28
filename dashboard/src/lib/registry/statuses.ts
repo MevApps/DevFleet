@@ -6,10 +6,10 @@ interface StatusGroup {
 }
 
 const statusGroups: readonly StatusGroup[] = [
-  { color: "green",  statuses: ["completed", "approved", "merged", "healthy"] },
-  { color: "blue",   statuses: ["active", "busy", "in_progress"] },
+  { color: "green",  statuses: ["completed", "approved", "merged", "healthy", "delivered"] },
+  { color: "blue",   statuses: ["active", "busy", "in_progress", "cloning", "installing", "detecting"] },
   { color: "purple", statuses: ["review", "pending_review"] },
-  { color: "yellow", statuses: ["blocked", "warning", "degraded"] },
+  { color: "yellow", statuses: ["blocked", "warning", "degraded", "stopped_dirty"] },
   { color: "orange", statuses: ["paused", "queued"] },
   { color: "red",    statuses: ["stopped", "abandoned", "discarded", "failed", "unhealthy"] },
   { color: "zinc",   statuses: ["idle", "proposed", "unknown"] },

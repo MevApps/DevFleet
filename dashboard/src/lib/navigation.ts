@@ -19,6 +19,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: "Workflow",
     items: [
+      { href: "/workspace", label: "Workspace", icon: "Container" },
       { href: "/pipeline", label: "Pipeline", icon: "Columns3" },
       { href: "/goals", label: "Goals", icon: "Target" },
     ],
@@ -50,6 +51,7 @@ export const NAV_SECTIONS: NavSection[] = [
 
 export const PAGE_TITLES: Record<string, string> = {
   "/": "Live Floor",
+  "/workspace": "Workspace",
   "/pipeline": "Pipeline",
   "/goals": "Goals",
   "/agents": "Agents",
