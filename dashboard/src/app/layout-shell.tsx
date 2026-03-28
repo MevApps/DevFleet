@@ -4,6 +4,8 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { TopBar } from "@/components/layout/top-bar"
 import { useSSE } from "@/lib/useSSE"
 import { useUIStore } from "@/lib/ui-store"
+import { useWorkspaceStore } from "@/lib/workspace-store"
+import { api } from "@/lib/api"
 
 export function LayoutShell({ children }: { children: React.ReactNode }) {
   useSSE()
@@ -18,6 +20,12 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const saved = localStorage.getItem("devfleet-theme") as "dark" | "light" | null
     if (saved) useUIStore.getState().setTheme(saved)
+  }, [])
+
+  useEffect(() => {
+    api.workspaceStatus()
+      .then(useWorkspaceStore.getState().setStatus)
+      .catch(() => useWorkspaceStore.getState().clear())
   }, [])
 
   return (
