@@ -12,6 +12,17 @@ export function formatPercent(ratio: number): string {
   return `${Math.round(ratio * 100)}%`
 }
 
+export function formatElapsed(startTimestamp: string): string {
+  const seconds = Math.floor((Date.now() - new Date(startTimestamp).getTime()) / 1000)
+  if (seconds < 0) return "0s"
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`
+}
+
 export function formatTimeAgo(timestamp: string): string {
   const seconds = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000)
   if (seconds < 5) return "just now"

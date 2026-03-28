@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatTokens, formatCurrency, formatPercent, formatTimeAgo } from '../format'
+import { formatTokens, formatCurrency, formatPercent, formatTimeAgo, formatElapsed } from '../format'
 
 describe('formatTokens', () => {
   it('formats millions', () => { expect(formatTokens(1_500_000)).toBe('1.5M') })
@@ -17,5 +17,23 @@ describe('formatPercent', () => {
 describe('formatTimeAgo', () => {
   it('returns just now for recent timestamps', () => {
     expect(formatTimeAgo(new Date().toISOString())).toBe('just now')
+  })
+})
+describe('formatElapsed', () => {
+  it('formats seconds', () => {
+    const start = new Date(Date.now() - 30_000).toISOString()
+    expect(formatElapsed(start)).toBe('30s')
+  })
+  it('formats minutes', () => {
+    const start = new Date(Date.now() - 840_000).toISOString()
+    expect(formatElapsed(start)).toBe('14m')
+  })
+  it('formats hours and minutes', () => {
+    const start = new Date(Date.now() - 3_900_000).toISOString()
+    expect(formatElapsed(start)).toBe('1h 5m')
+  })
+  it('formats zero as 0s', () => {
+    const start = new Date().toISOString()
+    expect(formatElapsed(start)).toBe('0s')
   })
 })
