@@ -10,6 +10,7 @@ describe("DetectProjectConfig — integration", () => {
     expect(config.language).toBe("typescript")
     expect(config.buildCommand).toBe("npm run build")
     expect(config.testCommand).toBe("npm test")
+    expect(config.installCommand).toBe("npm install")
     expect(config.sourceRoots).toContain("src")
   })
 })

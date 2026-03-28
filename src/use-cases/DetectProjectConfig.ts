@@ -6,13 +6,14 @@ interface MarkerRule {
   readonly language: string
   readonly buildCommand: string
   readonly testCommand: string
+  readonly installCommand: string
   readonly sourceRoot: string
 }
 
 const MARKER_RULES: readonly MarkerRule[] = [
-  { marker: "Cargo.toml", language: "rust", buildCommand: "cargo build", testCommand: "cargo test", sourceRoot: "src" },
-  { marker: "build.gradle.kts", language: "kotlin", buildCommand: "./gradlew build", testCommand: "./gradlew test", sourceRoot: "src" },
-  { marker: "go.mod", language: "go", buildCommand: "go build ./...", testCommand: "go test ./...", sourceRoot: "." },
+  { marker: "Cargo.toml", language: "rust", buildCommand: "cargo build", testCommand: "cargo test", installCommand: "cargo build", sourceRoot: "src" },
+  { marker: "build.gradle.kts", language: "kotlin", buildCommand: "./gradlew build", testCommand: "./gradlew test", installCommand: "./gradlew build", sourceRoot: "src" },
+  { marker: "go.mod", language: "go", buildCommand: "go build ./...", testCommand: "go test ./...", installCommand: "go mod download", sourceRoot: "." },
 ]
 
 export class DetectProjectConfig {
@@ -29,6 +30,7 @@ export class DetectProjectConfig {
         language,
         buildCommand: "npm run build",
         testCommand: "npm test",
+        installCommand: "npm install",
         sourceRoots,
       })
     }
@@ -41,6 +43,7 @@ export class DetectProjectConfig {
           language: rule.language,
           buildCommand: rule.buildCommand,
           testCommand: rule.testCommand,
+          installCommand: rule.installCommand,
           sourceRoots: [rule.sourceRoot],
         })
       }

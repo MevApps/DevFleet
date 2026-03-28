@@ -22,6 +22,7 @@ describe("DetectProjectConfig", () => {
     expect(config.language).toBe("typescript")
     expect(config.buildCommand).toBe("npm run build")
     expect(config.testCommand).toBe("npm test")
+    expect(config.installCommand).toBe("npm install")
   })
 
   it("detects JavaScript project (package.json only)", async () => {
@@ -38,6 +39,7 @@ describe("DetectProjectConfig", () => {
     expect(config.language).toBe("rust")
     expect(config.buildCommand).toBe("cargo build")
     expect(config.testCommand).toBe("cargo test")
+    expect(config.installCommand).toBe("cargo build")
   })
 
   it("detects Kotlin project", async () => {
@@ -47,6 +49,7 @@ describe("DetectProjectConfig", () => {
     expect(config.language).toBe("kotlin")
     expect(config.buildCommand).toBe("./gradlew build")
     expect(config.testCommand).toBe("./gradlew test")
+    expect(config.installCommand).toBe("./gradlew build")
   })
 
   it("detects Go project", async () => {
@@ -56,6 +59,7 @@ describe("DetectProjectConfig", () => {
     expect(config.language).toBe("go")
     expect(config.buildCommand).toBe("go build ./...")
     expect(config.testCommand).toBe("go test ./...")
+    expect(config.installCommand).toBe("go mod download")
   })
 
   it("returns unknown config for empty directory", async () => {
@@ -70,5 +74,6 @@ describe("DetectProjectConfig", () => {
     const useCase = new DetectProjectConfig(fs)
     const config = await useCase.execute()
     expect(config.sourceRoots).toContain("src")
+    expect(config.installCommand).toBe("npm install")
   })
 })
