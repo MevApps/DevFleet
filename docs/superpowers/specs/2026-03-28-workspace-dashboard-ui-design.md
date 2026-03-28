@@ -131,8 +131,8 @@ workspaceCleanup: () =>
 
 ## State Management (`workspace-store.ts`)
 
-The store holds **state only**. No API calls, no side effects. Page
-components and hooks call the API, then update the store.
+The store holds **state only** — no API calls. Page components and
+hooks fetch from the API, then call store setters to update state.
 
 ```typescript
 interface WorkspaceState {
@@ -184,21 +184,20 @@ stores subscribe to independently.
 
 ## Initial Fetch Strategy
 
-SSE drives real-time updates, but pages need state on mount before
-any SSE event fires.
+SSE drives real-time updates, but the store needs state before any
+SSE event fires.
 
-- **Workspace page:** calls `api.workspaceStatus()` on mount via the
-  existing `usePolling` hook (10s interval, matching other pages).
-  A 404 response means "no workspace" — sets `run: null`, not an error.
-- **Live Floor:** reads `useWorkspaceStore(s => s.run)` which is
-  populated by the workspace page's polling or by SSE events. If the
-  user navigates directly to Live Floor without visiting `/workspace`
-  first, the store is `null` (shows nudge banner). The first SSE
-  workspace event will populate it.
-- **Layout shell:** optionally, a single `api.workspaceStatus()` call
-  in the layout shell on app mount ensures the store is populated
-  regardless of which page the user lands on. This is the recommended
-  approach — one fetch on app start, SSE keeps it current.
+The **layout shell** (`layout-shell.tsx`) calls `api.workspaceStatus()`
+once on app mount. This populates the workspace store regardless of
+which page the user lands on. SSE keeps it current after that.
+
+A 404 response means "no workspace" — the fetch path catches the 404
+and calls `store.clear()` (not `store.setStatus()`). This is not
+treated as an error.
+
+The **workspace page** additionally polls `api.workspaceStatus()` on
+a 10s interval via `usePolling` (matching other pages) to catch any
+missed SSE events during boot progress.
 
 ---
 
@@ -212,7 +211,7 @@ Errors are handled at the surface where the user can act on them:
 | `startWorkspace()` 4xx (already active, clone failed) | Inline in setup form | Error banner above form |
 | `startWorkspace()` 5xx | Inline in setup form | "Something went wrong. Try again." |
 | `stopWorkspace()` 409 (goals still running) | Inline near Stop button | "Cannot stop — goals are still running." |
-| `workspaceStatus()` 404 | Not an error | Sets `run: null` (State 1) |
+| `workspaceStatus()` 404 | Not an error | Caller catches 404, calls `store.clear()` (State 1) |
 | `workspaceStatus()` 5xx | Dismissible banner at top of workspace page | "Failed to load workspace status." |
 | `cleanupWorkspace()` failure | Inline near Cleanup button | "Cleanup failed." |
 | `run.status === "failed"` | Setup form with error banner | Shows `run.error` above the form + "Try Again" |
@@ -351,18 +350,18 @@ const repoName = useWorkspaceStore(s =>
   s.run?.config.repoUrl.split("/").pop() ?? "")
 
 return isActive
-  ? <CreateGoalForm targetLabel={repoName} />
-  : <WorkspaceRequiredNotice />  // inline: warning + "Start Workspace →" link
+  ? <CreateGoalForm workspaceRepoName={repoName} />
+  : <WorkspaceRequiredNotice />
 ```
 
-The `CreateGoalForm` receives an optional `targetLabel` prop and renders
-a small indicator: "Targeting: {targetLabel}". No other workspace
-awareness.
+The `CreateGoalForm` receives an optional `workspaceRepoName` prop and
+renders a small indicator: "Targeting: {workspaceRepoName}". No other
+workspace awareness.
 
-The `WorkspaceRequiredNotice` is ~8 lines of inline JSX: an amber
-warning box with "No active workspace" message and a link to `/workspace`.
-Since it's used in two places, extract it as a shared component only if
-the markup is identical in both — otherwise inline it (YAGNI).
+The `WorkspaceRequiredNotice` is a shared component
+(`composites/workspace-required-notice.tsx`): an amber warning box
+with "No active workspace" message and a link to `/workspace`. Used
+in both Live Floor and Goals page.
 
 ---
 
@@ -381,7 +380,8 @@ the markup is identical in both — otherwise inline it (YAGNI).
 | Modify | `lib/navigation.ts` | Add Workspace to Workflow section + PAGE_TITLES |
 | Modify | `app/page.tsx` | Add workspace banner (active/nudge) + workspace gate around CreateGoalForm |
 | Modify | `app/goals/page.tsx` | Add workspace gate around CreateGoalForm |
-| Modify | `composites/create-goal-form.tsx` | Accept optional `targetLabel` prop |
+| Create | `composites/workspace-required-notice.tsx` | Shared "no workspace" warning with link |
+| Modify | `composites/create-goal-form.tsx` | Accept optional `workspaceRepoName` prop |
 | Modify | `app/layout-shell.tsx` | Initial workspace status fetch on app mount |
 
 ---
