@@ -267,6 +267,28 @@ interface CeoAlertMessage extends BaseMessage {
 }
 
 // ---------------------------------------------------------------------------
+// Workspace
+// ---------------------------------------------------------------------------
+interface WorkspaceGoalDeliveredMessage extends BaseMessage {
+  readonly type: "workspace.goal.delivered"
+  readonly goalId: GoalId
+  readonly prUrl: string
+  readonly merged: boolean
+}
+
+interface WorkspaceGoalFailedMessage extends BaseMessage {
+  readonly type: "workspace.goal.failed"
+  readonly goalId: GoalId
+  readonly reason: string
+}
+
+interface WorkspaceStatusChangedMessage extends BaseMessage {
+  readonly type: "workspace.status.changed"
+  readonly runId: string
+  readonly status: string
+}
+
+// ---------------------------------------------------------------------------
 // Union + utilities
 // ---------------------------------------------------------------------------
 export type Message =
@@ -304,6 +326,9 @@ export type Message =
   | BudgetUpdatedMessage
   | ModelUpdatedMessage
   | CeoAlertMessage
+  | WorkspaceGoalDeliveredMessage
+  | WorkspaceGoalFailedMessage
+  | WorkspaceStatusChangedMessage
 
 export type MessageType = Message["type"]
 
