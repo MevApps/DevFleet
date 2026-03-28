@@ -2,7 +2,6 @@ import type { Task } from "../entities/Task"
 import type { AgentId, ProjectId } from "../entities/ids"
 import type { AgentConfig, AgentEvent, AgentExecutor } from "./ports/AgentExecutor"
 import type { AgentSession, PhaseTask } from "./ports/AgentSession"
-import type { TaskRepository } from "./ports/TaskRepository"
 import type { MessagePort } from "./ports/MessagePort"
 import type { CheckBudget } from "./CheckBudget"
 import type { RecordTurnMetrics } from "./RecordTurnMetrics"
@@ -15,7 +14,6 @@ export class RunAgentSession implements AgentExecutor {
     private readonly checkBudget: CheckBudget,
     private readonly recordTurnMetrics: RecordTurnMetrics,
     private readonly evaluateOutcome: EvaluateOutcome,
-    private readonly _tasks: TaskRepository,
     private readonly bus: MessagePort,
   ) {}
 

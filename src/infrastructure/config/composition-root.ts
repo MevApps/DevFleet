@@ -243,7 +243,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   // 5. Agent executor and build/test use cases
   // -------------------------------------------------------------------------
   const agentExecutor = new RunAgentSession(
-    agentSession, checkBudget, recordTurnMetrics, evaluateOutcome, taskRepo, bus,
+    agentSession, checkBudget, recordTurnMetrics, evaluateOutcome, bus,
   )
 
   const buildCommand = config.buildCommand ?? "npm run build"

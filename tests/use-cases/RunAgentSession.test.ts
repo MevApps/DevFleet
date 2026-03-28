@@ -78,7 +78,7 @@ describe("RunAgentSession", () => {
   it("emits turn_completed and task_completed on successful session", async () => {
     const { task, checkBudget, recordTurnMetrics, evaluateOutcome, tasks, bus } = makeMocks()
     const mockSession = new MockAgentSession()
-    const runner = new RunAgentSession(mockSession, checkBudget, recordTurnMetrics, evaluateOutcome, tasks, bus)
+    const runner = new RunAgentSession(mockSession, checkBudget, recordTurnMetrics, evaluateOutcome, bus)
 
     const events = await collectEvents(runner, task)
 
@@ -89,7 +89,7 @@ describe("RunAgentSession", () => {
   it("emits budget_exceeded when pre-launch budget check fails", async () => {
     const { task, checkBudget, recordTurnMetrics, evaluateOutcome, tasks, bus } = makeMocks({ canProceed: false })
     const mockSession = new MockAgentSession()
-    const runner = new RunAgentSession(mockSession, checkBudget, recordTurnMetrics, evaluateOutcome, tasks, bus)
+    const runner = new RunAgentSession(mockSession, checkBudget, recordTurnMetrics, evaluateOutcome, bus)
 
     const events = await collectEvents(runner, task)
 
@@ -100,7 +100,7 @@ describe("RunAgentSession", () => {
   it("records turn metrics from turn_completed events", async () => {
     const { task, checkBudget, recordTurnMetrics, evaluateOutcome, tasks, bus } = makeMocks()
     const mockSession = new MockAgentSession()
-    const runner = new RunAgentSession(mockSession, checkBudget, recordTurnMetrics, evaluateOutcome, tasks, bus)
+    const runner = new RunAgentSession(mockSession, checkBudget, recordTurnMetrics, evaluateOutcome, bus)
 
     await collectEvents(runner, task)
 
@@ -113,7 +113,7 @@ describe("RunAgentSession", () => {
   it("calls evaluateOutcome with session result", async () => {
     const { task, checkBudget, recordTurnMetrics, evaluateOutcome, tasks, bus } = makeMocks()
     const mockSession = new MockAgentSession()
-    const runner = new RunAgentSession(mockSession, checkBudget, recordTurnMetrics, evaluateOutcome, tasks, bus)
+    const runner = new RunAgentSession(mockSession, checkBudget, recordTurnMetrics, evaluateOutcome, bus)
 
     await collectEvents(runner, task)
 
@@ -126,7 +126,7 @@ describe("RunAgentSession", () => {
   it("includes content in task_completed event", async () => {
     const { task, checkBudget, recordTurnMetrics, evaluateOutcome, tasks, bus } = makeMocks()
     const mockSession = new MockAgentSession()
-    const runner = new RunAgentSession(mockSession, checkBudget, recordTurnMetrics, evaluateOutcome, tasks, bus)
+    const runner = new RunAgentSession(mockSession, checkBudget, recordTurnMetrics, evaluateOutcome, bus)
 
     const events = await collectEvents(runner, task)
 

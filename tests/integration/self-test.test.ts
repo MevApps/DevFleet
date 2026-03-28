@@ -48,16 +48,12 @@ maybe("Self-Test: DevFleet on DevFleet", () => {
   })
 
   it("runs the full pipeline and produces a completed goal", async () => {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) throw new Error("ANTHROPIC_API_KEY required for self-test")
-
     const fs = new NodeFileSystem(clonePath)
     const detected = await new DetectProjectConfig(fs).execute()
     console.log(`  Detected project: ${detected.language} (build: ${detected.buildCommand}, test: ${detected.testCommand})`)
 
     system = await buildSystem({
       workspaceDir: clonePath,
-      anthropicApiKey: apiKey,
       supervisorModel: "claude-opus-4-20250514",
       reviewerModel: "claude-opus-4-20250514",
       developerModel: "claude-sonnet-4-20250514",

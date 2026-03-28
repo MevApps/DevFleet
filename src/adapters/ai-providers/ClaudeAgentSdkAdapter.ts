@@ -1,4 +1,3 @@
-import { query } from "@anthropic-ai/claude-agent-sdk"
 import type { AgentSession, PhaseTask, SessionEvent, AgentCapability } from "../../use-cases/ports/AgentSession"
 
 const CAPABILITY_TO_TOOLS: Record<AgentCapability, readonly string[]> = {
@@ -19,6 +18,10 @@ export function mapCapabilities(capabilities: ReadonlyArray<AgentCapability>): s
 
 export class ClaudeAgentSdkAdapter implements AgentSession {
   async *launch(task: PhaseTask, signal: AbortSignal): AsyncIterable<SessionEvent> {
+    // Dynamic import required: the SDK is ESM-only while this project is CJS
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { query } = await (Function('return import("@anthropic-ai/claude-agent-sdk")')() as Promise<{ query: (...args: any[]) => AsyncIterable<any> }>)
+
     const allowedTools = mapCapabilities(task.capabilities)
 
     const abortController = new AbortController()
