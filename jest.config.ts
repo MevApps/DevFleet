@@ -10,6 +10,7 @@ const config: Config = {
     "^@adapters/(.*)$": "<rootDir>/src/adapters/$1",
     "^@infrastructure/(.*)$": "<rootDir>/src/infrastructure/$1",
     "^@plugin-sdk/(.*)$": "<rootDir>/src/plugin-sdk/$1",
+    "^@anthropic-ai/claude-agent-sdk$": "<rootDir>/tests/__mocks__/@anthropic-ai/claude-agent-sdk.ts",
   },
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.test.json" }],
