@@ -1,4 +1,4 @@
-import type { LiveFloorData, PipelineData, MetricsSummary, GoalDTO, FinancialsData, QualityData, TimingsData, InsightSummary, InsightDetail, CeoAlertData, AlertPreferencesData, PluginHealth } from "./types"
+import type { LiveFloorData, PipelineData, MetricsSummary, GoalDTO, FinancialsData, QualityData, TimingsData, InsightSummary, InsightDetail, CeoAlertData, AlertPreferencesData, PluginHealth, WorkspaceStartInput, WorkspaceStatusDTO } from "./types"
 const BASE = "/api"
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)
@@ -33,4 +33,8 @@ export const api = {
   alertPreferences: () => get<AlertPreferencesData>("/alerts/preferences"),
   updateAlertPreferences: (prefs: AlertPreferencesData) => fetch(`${BASE}/alerts/preferences`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(prefs) }).then(r => r.json() as Promise<{ status: string }>),
   systemHealth: () => get<PluginHealth[]>("/system/health"),
+  workspaceStart: (config: WorkspaceStartInput) => post<{ runId: string }>("/workspace/start", config),
+  workspaceStatus: () => get<WorkspaceStatusDTO>("/workspace/status"),
+  workspaceStop: () => post<{ status: string; clonePath?: string }>("/workspace/stop", {}),
+  workspaceCleanup: () => post<{ status: string }>("/workspace/cleanup", {}),
 }

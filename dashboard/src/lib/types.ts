@@ -18,3 +18,53 @@ export interface InsightDetail { readonly id: string; readonly title: string; re
 export interface CeoAlertData { readonly severity: "info" | "warning" | "urgent"; readonly title: string; readonly body: string; readonly goalId: string | null; readonly taskId: string | null; readonly insightId: string | null; readonly timestamp: string }
 export interface AlertPreferencesData { readonly minSeverity: "info" | "warning" | "urgent"; readonly mutedTriggers: string[] }
 export interface PluginHealth { readonly name: string; readonly status: "healthy" | "degraded" | "unhealthy" }
+
+// Workspace types
+export type WorkspaceRunStatus =
+  | "created"
+  | "cloning"
+  | "installing"
+  | "detecting"
+  | "active"
+  | "stopped"
+  | "stopped_dirty"
+  | "failed"
+
+export interface WorkspaceStartInput {
+  readonly repoUrl: string
+  readonly maxCostUsd?: number
+  readonly maxTokens?: number
+  readonly supervisorModel?: string
+  readonly developerModel?: string
+  readonly reviewerModel?: string
+  readonly timeoutMs?: number
+}
+
+export interface WorkspaceRunDTO {
+  readonly id: string
+  readonly config: WorkspaceStartInput
+  readonly status: WorkspaceRunStatus
+  readonly projectConfig: {
+    readonly language: string
+    readonly testCommand: string
+    readonly installCommand: string
+  } | null
+  readonly startedAt: string
+  readonly completedAt: string | null
+  readonly error: string | null
+}
+
+export interface WorkspaceGoalSummaryDTO {
+  readonly goalId: string
+  readonly description: string
+  readonly status: string
+  readonly costUsd: number
+  readonly durationMs: number
+  readonly prUrl: string | null
+}
+
+export interface WorkspaceStatusDTO {
+  readonly run: WorkspaceRunDTO
+  readonly costUsd: number
+  readonly goalSummaries: readonly WorkspaceGoalSummaryDTO[]
+}
