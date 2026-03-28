@@ -213,7 +213,7 @@ function createMockFileSystem(): FileSystem {
 
 function createMockShell(): ShellExecutor {
   return {
-    async execute(_command: string, _timeout?: number) {
+    async execute(_command: string, _args: readonly string[], _timeout?: number) {
       return { stdout: "10 passed, 0 failed", stderr: "", exitCode: 0 }
     },
   }

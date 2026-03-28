@@ -100,7 +100,7 @@ const mockFs: FileSystem = {
 // Mock ShellExecutor: no-op
 // ---------------------------------------------------------------------------
 const mockShell: ShellExecutor = {
-  async execute(_command: string, _timeout?: number) {
+  async execute(_command: string, _args: readonly string[], _timeout?: number) {
     return { stdout: "", stderr: "", exitCode: 0 }
   },
 }

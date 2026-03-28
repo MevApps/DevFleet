@@ -57,9 +57,12 @@ export class ExecuteToolCalls {
         return files.join("\n")
       }
       case "shell_run": {
-        const command = call.input["command"] as string
+        const rawCommand = call.input["command"] as string
         const timeout = call.input["timeout"] as number | undefined
-        const result = await this.shell.execute(command, timeout)
+        const parts = rawCommand.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [rawCommand]
+        const command = parts[0]!
+        const args = parts.slice(1).map(p => p.replace(/^"|"$/g, ""))
+        const result = await this.shell.execute(command, args, timeout)
         return result.stdout + (result.stderr ? `\nSTDERR: ${result.stderr}` : "")
       }
       default:

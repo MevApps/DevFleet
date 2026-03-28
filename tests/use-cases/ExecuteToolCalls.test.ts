@@ -16,7 +16,7 @@ const mockFs: FileSystem = {
 }
 
 const mockShell: ShellExecutor = {
-  execute: async (command) => ({ stdout: `ran: ${command}`, stderr: "", exitCode: 0 }),
+  execute: async (command, args) => ({ stdout: `ran: ${[command, ...args].join(" ")}`, stderr: "", exitCode: 0 }),
 }
 
 describe("ExecuteToolCalls", () => {
