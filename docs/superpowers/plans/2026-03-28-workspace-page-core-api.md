@@ -463,11 +463,12 @@ export interface CreatePullRequestParams {
   readonly baseBranch: string
   readonly title: string
   readonly body: string
+  readonly workingDir: string
 }
 
 export interface PullRequestCreator {
   create(params: CreatePullRequestParams): Promise<string>
-  merge(prUrl: string): Promise<void>
+  merge(prUrl: string, workingDir: string): Promise<void>
 }
 ```
 
