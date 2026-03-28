@@ -3,7 +3,11 @@ import { useState } from "react"
 import { api } from "@/lib/api"
 import { useDashboardStore } from "@/lib/store"
 
-export function CreateGoalForm() {
+interface CreateGoalFormProps {
+  workspaceRepoName?: string
+}
+
+export function CreateGoalForm({ workspaceRepoName }: CreateGoalFormProps) {
   const [description, setDescription] = useState("")
   const [maxTokens, setMaxTokens] = useState(100_000)
   const [maxCostUsd, setMaxCostUsd] = useState(10)
@@ -30,7 +34,14 @@ export function CreateGoalForm() {
 
   return (
     <form onSubmit={handleSubmit} className="rounded-lg border border-border p-4 bg-card">
-      <h3 className="text-base font-medium mb-3 text-text-primary">Create Goal</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-base font-medium text-text-primary">Create Goal</h3>
+        {workspaceRepoName && (
+          <span className="text-xs text-text-muted">
+            Targeting: <span className="text-text-secondary">{workspaceRepoName}</span>
+          </span>
+        )}
+      </div>
       <div className="flex gap-3 items-end">
         <div className="flex-1">
           <input type="text" value={description} onChange={(e) => setDescription(e.target.value)}
