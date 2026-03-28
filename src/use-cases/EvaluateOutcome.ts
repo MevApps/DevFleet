@@ -23,7 +23,7 @@ export class EvaluateOutcome {
     private readonly bus: MessagePort,
   ) {}
 
-  async execute(taskId: TaskId, input: EvaluateOutcomeInput): Promise<Result<SessionOutcome>> {
+  async execute(taskId: TaskId, _input: EvaluateOutcomeInput): Promise<Result<SessionOutcome>> {
     const task = await this.tasks.findById(taskId)
     if (!task) {
       return failure(`Task ${taskId} not found`)

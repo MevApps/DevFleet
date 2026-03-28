@@ -8,7 +8,7 @@ import { createBudget } from "../../entities/Budget"
 import type { Message } from "../../entities/Message"
 
 const WORKSPACE_DIR = process.env["WORKSPACE_DIR"] ?? process.cwd()
-const API_KEY = process.env["ANTHROPIC_API_KEY"]
+const MOCK_MODE = process.env["DEVFLEET_MOCK"] === "true"
 
 function formatTimestamp(): string {
   return new Date().toLocaleTimeString("en-US", { hour12: false })
@@ -22,13 +22,13 @@ async function main(): Promise<void> {
   console.log("DevFleet CLI — Phase 3 Dashboard + Real-Time")
   console.log("============================================")
 
-  if (!API_KEY) {
-    console.log("(No ANTHROPIC_API_KEY set — using mock AI providers)")
+  if (MOCK_MODE) {
+    console.log("(DEVFLEET_MOCK=true — using mock agent sessions)")
   }
 
   const system = await buildSystem({
     workspaceDir: WORKSPACE_DIR,
-    anthropicApiKey: API_KEY,
+    mockMode: MOCK_MODE,
     developerModel: process.env["DEVELOPER_MODEL"] ?? "claude-3-5-sonnet-20241022",
     supervisorModel: process.env["SUPERVISOR_MODEL"] ?? "claude-3-5-sonnet-20241022",
     reviewerModel: process.env["REVIEWER_MODEL"] ?? "claude-3-5-sonnet-20241022",

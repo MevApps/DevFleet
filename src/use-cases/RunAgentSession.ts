@@ -15,7 +15,7 @@ export class RunAgentSession implements AgentExecutor {
     private readonly checkBudget: CheckBudget,
     private readonly recordTurnMetrics: RecordTurnMetrics,
     private readonly evaluateOutcome: EvaluateOutcome,
-    private readonly tasks: TaskRepository,
+    private readonly _tasks: TaskRepository,
     private readonly bus: MessagePort,
   ) {}
 
