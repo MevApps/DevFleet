@@ -7,6 +7,7 @@ import { GoalFocusView } from "./goal-focus-view"
 import { ViewModeToggle } from "./view-mode-toggle"
 import { EmptyState } from "@/components/primitives/empty-state"
 import { KanbanView } from "./kanban-view"
+import { TableView } from "./table-view"
 
 export function ActiveFloor() {
   const viewMode = useFloorStore((s) => s.viewMode)
@@ -60,7 +61,7 @@ export function ActiveFloor() {
     )
   }
 
-  // Table view — placeholder for Phase 4b
+  // Table view — dense spreadsheet with sorting, filtering, bulk actions
   if (activeSection === "floor" && viewMode === "table") {
     return (
       <div>
@@ -68,7 +69,7 @@ export function ActiveFloor() {
           <h1 className="text-[16px] font-bold text-text-primary">Active Floor</h1>
           <ViewModeToggle />
         </div>
-        <p className="text-sm text-text-muted">Table view will be implemented in Phase 4b.</p>
+        <TableView />
       </div>
     )
   }
