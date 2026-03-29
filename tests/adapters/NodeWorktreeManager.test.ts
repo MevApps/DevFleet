@@ -16,7 +16,7 @@ describe("NodeWorktreeManager", () => {
       { cwd: repoDir },
     )
     const shell = new NodeShellExecutor(repoDir)
-    mgr = new NodeWorktreeManager(shell, repoDir)
+    mgr = new NodeWorktreeManager(shell, repoDir, (path: string) => new NodeShellExecutor(path))
   })
 
   it("creates a worktree and reports it exists", async () => {

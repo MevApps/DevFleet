@@ -5,15 +5,11 @@ import { join } from "node:path"
 const WORKTREES_DIR = ".worktrees"
 
 export class NodeWorktreeManager implements WorktreeManager {
-  private readonly shellFactory: ShellExecutorFactory
-
   constructor(
     private readonly shell: ShellExecutor,
     private readonly projectRoot: string,
-    shellFactory?: ShellExecutorFactory,
-  ) {
-    this.shellFactory = shellFactory ?? ((_path: string) => shell)
-  }
+    private readonly shellFactory: ShellExecutorFactory,
+  ) {}
 
   async create(branch: string, baseBranch?: string): Promise<WorktreePath> {
     const worktreePath = this.worktreePath(branch)
