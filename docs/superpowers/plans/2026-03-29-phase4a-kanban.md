@@ -27,6 +27,7 @@
 ### Modified Files
 | File | Change |
 |------|--------|
+| `src/components/composites/phase-lanes.tsx` | Export `PHASES` and `PHASE_CONFIG` (add `export` keyword) |
 | `src/components/composites/kanban-column.tsx` | Extend: accept `onTaskClick` prop, use `compact` TaskCard with `goalTag` |
 | `src/components/composites/active-floor.tsx` | Replace kanban placeholder with `<KanbanView />` |
 
@@ -325,6 +326,13 @@ Expected: FAIL — module not found
 
 - [ ] **Step 3: Write the implementation**
 
+**Note to implementer:** Before writing KanbanView, export `PHASES` and `PHASE_CONFIG` from `src/components/composites/phase-lanes.tsx`. Change these two lines from `const` to `export const`:
+```typescript
+export const PHASES = ["planning", "implementation", "review", "done"] as const
+export const PHASE_CONFIG: Record<string, { label: string; dotColor: string }> = { ... }
+```
+This avoids duplicating the phase definitions. KanbanView imports them.
+
 ```typescript
 // src/components/composites/kanban-view.tsx
 "use client"
@@ -333,14 +341,8 @@ import { useFloorStore } from "@/lib/floor-store"
 import { useInspectorStore } from "@/lib/inspector-store"
 import { KanbanColumn } from "./kanban-column"
 import { FilterBar } from "./filter-bar"
+import { PHASES, PHASE_CONFIG } from "./phase-lanes"
 import { getTaskDisplayPhase } from "@/lib/hooks/use-goal-tasks"
-
-const PHASES = [
-  { key: "planning", label: "Planning", dotColor: "var(--status-green-fg)" },
-  { key: "implementation", label: "Implementation", dotColor: "var(--status-blue-fg)" },
-  { key: "review", label: "Review", dotColor: "var(--status-purple-fg)" },
-  { key: "done", label: "Done", dotColor: "var(--status-green-fg)" },
-] as const
 
 export function KanbanView() {
   const activeTasks = useDashboardStore((s) => s.activeTasks)
@@ -352,9 +354,9 @@ export function KanbanView() {
     ? activeTasks.filter((t) => t.goalId === kanbanGoalFilter)
     : activeTasks
 
-  const tasksByPhase: Record<string, typeof filteredTasks[number][]> = {
-    planning: [], implementation: [], review: [], done: [],
-  }
+  const tasksByPhase: Record<string, typeof filteredTasks[number][]> = Object.fromEntries(
+    PHASES.map((p) => [p, []])
+  )
   for (const task of filteredTasks) {
     const phase = getTaskDisplayPhase(task)
     if (tasksByPhase[phase]) tasksByPhase[phase].push(task)
@@ -365,16 +367,19 @@ export function KanbanView() {
     <div>
       <FilterBar />
       <div className="flex gap-3">
-        {PHASES.map((phase) => (
-          <KanbanColumn
-            key={phase.key}
-            phase={phase.label}
-            tasks={tasksByPhase[phase.key]}
-            goals={goals}
-            dotColor={phase.dotColor}
-            onTaskClick={(task) => openInspector(task.id, "task", task.description.split("\n")[0].slice(0, 40))}
-          />
-        ))}
+        {PHASES.map((phase) => {
+          const config = PHASE_CONFIG[phase]
+          return (
+            <KanbanColumn
+              key={phase}
+              phase={config.label}
+              tasks={tasksByPhase[phase]}
+              goals={goals}
+              dotColor={config.dotColor}
+              onTaskClick={(task) => openInspector(task.id, "task", task.description.split("\n")[0].slice(0, 40))}
+            />
+          )
+        })}
       </div>
     </div>
   )
