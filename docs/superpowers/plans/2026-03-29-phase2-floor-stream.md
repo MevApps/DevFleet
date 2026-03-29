@@ -62,7 +62,7 @@
 // src/lib/hooks/__tests__/use-goal-tasks.test.ts
 import { describe, it, expect, beforeEach } from "vitest"
 import { useDashboardStore } from "@/lib/store"
-import { getGoalTasks, computePhaseSegments, computeTaskProgress } from "../use-goal-tasks"
+import { getGoalTasks, computePhaseSegments, computeTaskProgress, getTaskDisplayPhase } from "../use-goal-tasks"
 import type { TaskDTO, GoalDTO } from "@/lib/types"
 
 const makeBudget = () => ({ maxTokens: 10000, maxCostUsd: 1, remaining: 0.5 })
@@ -122,6 +122,23 @@ describe("computePhaseSegments", () => {
   })
 })
 
+describe("getTaskDisplayPhase", () => {
+  it("maps completed/merged to done", () => {
+    expect(getTaskDisplayPhase(makeTask({ status: "completed" }))).toBe("done")
+    expect(getTaskDisplayPhase(makeTask({ status: "merged" }))).toBe("done")
+  })
+
+  it("maps review statuses to review", () => {
+    expect(getTaskDisplayPhase(makeTask({ status: "review" }))).toBe("review")
+    expect(getTaskDisplayPhase(makeTask({ status: "pending_review" }))).toBe("review")
+  })
+
+  it("uses task.phase for active/queued statuses", () => {
+    expect(getTaskDisplayPhase(makeTask({ status: "in_progress", phase: "planning" }))).toBe("planning")
+    expect(getTaskDisplayPhase(makeTask({ status: "queued", phase: "implementation" }))).toBe("implementation")
+  })
+})
+
 describe("computeTaskProgress", () => {
   it("counts completed and total tasks", () => {
     const tasks: readonly TaskDTO[] = [
@@ -155,9 +172,16 @@ Expected: FAIL — module `../use-goal-tasks` not found
 // src/lib/hooks/use-goal-tasks.ts
 import type { TaskDTO } from "@/lib/types"
 
-const DONE_STATUSES = new Set(["completed", "approved", "merged"])
-const ACTIVE_STATUSES = new Set(["in_progress", "busy"])
-const REVIEW_STATUSES = new Set(["review", "pending_review"])
+export const DONE_STATUSES = new Set(["completed", "approved", "merged"])
+export const ACTIVE_STATUSES = new Set(["in_progress", "busy"])
+export const REVIEW_STATUSES = new Set(["review", "pending_review"])
+
+export const SEGMENT_COLORS: Record<string, string> = {
+  done: "var(--status-green-fg)",
+  active: "var(--status-blue-fg)",
+  review: "var(--status-purple-fg)",
+  queued: "var(--border)",
+}
 
 export interface PhaseSegment {
   readonly type: "done" | "active" | "review" | "queued"
@@ -171,6 +195,12 @@ export interface TaskProgress {
 
 export function getGoalTasks(tasks: readonly TaskDTO[], goalId: string): TaskDTO[] {
   return tasks.filter((t) => t.goalId === goalId)
+}
+
+export function getTaskDisplayPhase(task: TaskDTO): string {
+  if (DONE_STATUSES.has(task.status)) return "done"
+  if (REVIEW_STATUSES.has(task.status)) return "review"
+  return task.phase || "implementation"
 }
 
 export function computePhaseSegments(tasks: readonly TaskDTO[]): PhaseSegment[] {
@@ -202,7 +232,7 @@ export function computeTaskProgress(tasks: readonly TaskDTO[], goalTaskCount: nu
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `cd dashboard && npx vitest run src/lib/hooks/__tests__/use-goal-tasks.test.ts`
-Expected: All 7 tests PASS
+Expected: All 10 tests PASS
 
 - [ ] **Step 5: Commit**
 
@@ -497,17 +527,10 @@ import { useInspectorStore } from "@/lib/inspector-store"
 import { StatusBadge } from "@/components/primitives/status-badge"
 import { TimeAgo } from "@/components/primitives/time-ago"
 import { PhaseLanes } from "./phase-lanes"
-import { getGoalTasks, computePhaseSegments, computeTaskProgress } from "@/lib/hooks/use-goal-tasks"
+import { getGoalTasks, computePhaseSegments, computeTaskProgress, SEGMENT_COLORS } from "@/lib/hooks/use-goal-tasks"
 import { formatCurrency } from "@/lib/utils/format"
 import { cn } from "@/lib/utils"
 import { ChevronRight } from "lucide-react"
-
-const SEGMENT_COLORS: Record<string, string> = {
-  done: "var(--status-green-fg)",
-  active: "var(--status-blue-fg)",
-  review: "var(--status-purple-fg)",
-  queued: "var(--border)",
-}
 
 const ATTENTION_STATUSES = new Set(["blocked", "failed"])
 
@@ -613,7 +636,7 @@ git commit -m "feat(floor): add GoalRow — collapsible stream row with phase ba
 "use client"
 import type { TaskDTO } from "@/lib/types"
 import { TaskCard } from "./task-card"
-import { cn } from "@/lib/utils"
+import { getTaskDisplayPhase } from "@/lib/hooks/use-goal-tasks"
 import { ArrowRight } from "lucide-react"
 
 const PHASES = ["planning", "implementation", "review", "done"] as const
@@ -625,15 +648,6 @@ const PHASE_CONFIG: Record<string, { label: string; dotColor: string }> = {
   done: { label: "Done", dotColor: "var(--status-green-fg)" },
 }
 
-const DONE_STATUSES = new Set(["completed", "approved", "merged"])
-const REVIEW_STATUSES = new Set(["review", "pending_review"])
-
-function getTaskPhase(task: TaskDTO): string {
-  if (DONE_STATUSES.has(task.status)) return "done"
-  if (REVIEW_STATUSES.has(task.status)) return "review"
-  return task.phase || "implementation"
-}
-
 interface PhaseLanesProps {
   tasks: readonly TaskDTO[]
   onTaskClick: (task: TaskDTO) => void
@@ -642,7 +656,7 @@ interface PhaseLanesProps {
 export function PhaseLanes({ tasks, onTaskClick }: PhaseLanesProps) {
   const tasksByPhase: Record<string, TaskDTO[]> = { planning: [], implementation: [], review: [], done: [] }
   for (const task of tasks) {
-    const phase = getTaskPhase(task)
+    const phase = getTaskDisplayPhase(task)
     if (tasksByPhase[phase]) tasksByPhase[phase].push(task)
     else tasksByPhase.implementation.push(task)
   }
@@ -684,15 +698,60 @@ export function PhaseLanes({ tasks, onTaskClick }: PhaseLanesProps) {
 }
 ```
 
-- [ ] **Step 2: Verify build and existing tests still pass**
+- [ ] **Step 2: Write tests for PhaseLanes**
 
-Run: `cd dashboard && npx vitest run`
-Expected: All tests PASS
+```typescript
+// src/components/composites/__tests__/phase-lanes.test.tsx
+import { describe, it, expect } from "vitest"
+import { render, screen } from "@testing-library/react"
+import { PhaseLanes } from "../phase-lanes"
+import type { TaskDTO } from "@/lib/types"
 
-- [ ] **Step 3: Commit**
+const makeBudget = () => ({ maxTokens: 10000, maxCostUsd: 1, remaining: 0.5 })
+const makeTask = (overrides: Partial<TaskDTO>): TaskDTO => ({
+  id: "t-1", goalId: "g-1", description: "Test task", status: "in_progress",
+  phase: "implementation", assignedTo: "dev-01", tokensUsed: 500,
+  budget: makeBudget(), retryCount: 0, branch: null, ...overrides,
+})
+
+describe("PhaseLanes", () => {
+  it("renders four phase columns", () => {
+    render(<PhaseLanes tasks={[]} onTaskClick={() => {}} />)
+    expect(screen.getByText("Planning")).toBeInTheDocument()
+    expect(screen.getByText("Implementation")).toBeInTheDocument()
+    expect(screen.getByText("Review")).toBeInTheDocument()
+    expect(screen.getByText("Done")).toBeInTheDocument()
+  })
+
+  it("places completed tasks in Done column", () => {
+    const tasks = [makeTask({ id: "t-1", status: "completed", description: "Write spec" })]
+    render(<PhaseLanes tasks={tasks} onTaskClick={() => {}} />)
+    expect(screen.getByText(/Write spec/)).toBeInTheDocument()
+  })
+
+  it("places review tasks in Review column", () => {
+    const tasks = [makeTask({ id: "t-1", status: "review", description: "Review handler" })]
+    render(<PhaseLanes tasks={tasks} onTaskClick={() => {}} />)
+    expect(screen.getByText(/Review handler/)).toBeInTheDocument()
+  })
+
+  it("shows 'No tasks' for empty phases", () => {
+    render(<PhaseLanes tasks={[]} onTaskClick={() => {}} />)
+    const noTasks = screen.getAllByText("No tasks")
+    expect(noTasks).toHaveLength(4)
+  })
+})
+```
+
+- [ ] **Step 3: Run tests**
+
+Run: `cd dashboard && npx vitest run src/components/composites/__tests__/phase-lanes.test.tsx`
+Expected: All 4 tests PASS
+
+- [ ] **Step 4: Commit**
 
 ```bash
-git add dashboard/src/components/composites/phase-lanes.tsx
+git add dashboard/src/components/composites/phase-lanes.tsx dashboard/src/components/composites/__tests__/phase-lanes.test.tsx
 git commit -m "feat(floor): add PhaseLanes — horizontal phase columns with compact task cards"
 ```
 
@@ -776,16 +835,9 @@ import { useDashboardStore } from "@/lib/store"
 import { useInspectorStore } from "@/lib/inspector-store"
 import { StatusBadge } from "@/components/primitives/status-badge"
 import { PhaseLanes } from "./phase-lanes"
-import { getGoalTasks, computePhaseSegments, computeTaskProgress } from "@/lib/hooks/use-goal-tasks"
+import { getGoalTasks, computePhaseSegments, computeTaskProgress, SEGMENT_COLORS } from "@/lib/hooks/use-goal-tasks"
 import { formatCurrency, formatElapsed } from "@/lib/utils/format"
 import { ChevronLeft } from "lucide-react"
-
-const SEGMENT_COLORS: Record<string, string> = {
-  done: "var(--status-green-fg)",
-  active: "var(--status-blue-fg)",
-  review: "var(--status-purple-fg)",
-  queued: "var(--border)",
-}
 
 export function GoalFocusView() {
   const focusedGoalId = useFloorStore((s) => s.focusedGoalId)
@@ -1046,17 +1098,18 @@ git commit -m "feat(floor): add ActiveFloor — orchestrates Stream, GoalFocus, 
 - Modify: `src/app/layout-shell.tsx`
 - Modify: `src/app/page.tsx` (will become a thin wrapper)
 
-- [ ] **Step 1: Update layout-shell to use ActiveFloor and fetch data on mount**
+- [ ] **Step 1: Add consolidated data fetch to layout-shell**
+
+The layout-shell keeps its existing structure — `children` still render. We only add the consolidated data fetch effect. Do NOT replace children with ActiveFloor — old routes must continue working during migration.
 
 ```typescript
 // src/app/layout-shell.tsx
 "use client"
-import { useEffect, useCallback } from "react"
+import { useEffect } from "react"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { TopBar } from "@/components/layout/top-bar"
 import { InspectorPanel } from "@/components/layout/inspector-panel"
 import { WorkspaceGate } from "@/components/composites/workspace-gate"
-import { ActiveFloor } from "@/components/composites/active-floor"
 import { useSSE } from "@/lib/useSSE"
 import { useUIStore } from "@/lib/ui-store"
 import { useWorkspaceStore } from "@/lib/workspace-store"
@@ -1107,7 +1160,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
         <div className="flex flex-1 overflow-hidden">
           <main className="flex-1 overflow-auto p-6">
             <WorkspaceGate>
-              {() => <ActiveFloor />}
+              {() => children}
             </WorkspaceGate>
           </main>
           <InspectorPanel />
@@ -1118,20 +1171,21 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
 }
 ```
 
-- [ ] **Step 2: Update root page to be minimal**
+- [ ] **Step 2: Update root page to render ActiveFloor**
 
-The root page (`src/app/page.tsx`) is now rendered inside the ActiveFloor — but since we're using `LayoutShell` which renders `ActiveFloor` directly, the root page can be simplified. However, to avoid breaking the Next.js App Router, keep it as a minimal passthrough:
+The root page (`src/app/page.tsx`) renders `ActiveFloor` as its content. This is the only page that changes — old pages at `/goals`, `/tasks`, `/financials`, etc. continue to render their own content through `children`. They still work during migration and will be removed in Phase 6.
 
 ```typescript
 // src/app/page.tsx
+"use client"
+import { ActiveFloor } from "@/components/composites/active-floor"
+
 export default function RootPage() {
-  return null
+  return <ActiveFloor />
 }
 ```
 
-The `LayoutShell` now renders `ActiveFloor` directly instead of `children`, so the page content is ignored. Old pages at `/goals`, `/tasks`, etc. still exist but are effectively dead — they render `null` through the layout but `ActiveFloor` shows the floor content regardless.
-
-**Note:** This is a deliberate architectural choice. The `children` prop in `LayoutShell` is no longer used for the main floor — `ActiveFloor` manages its own content. Old page routes will be cleaned up in Phase 6.
+**Note:** The root route `/` now shows the Stream view. Navigating to `/goals` or `/financials` shows the old page content. The sidebar goal clicks set `focusedGoalId` which ActiveFloor reads — this works because ActiveFloor is rendered at `/` and the sidebar doesn't trigger route navigation.
 
 - [ ] **Step 3: Run all tests and verify build**
 
@@ -1152,17 +1206,33 @@ git commit -m "feat(floor): wire ActiveFloor into layout, consolidate data fetch
 **Files:**
 - Modify: `src/components/layout/app-sidebar.tsx`
 
-- [ ] **Step 1: Update SidebarGoalItem to compute real task progress**
+- [ ] **Step 1: Update app-sidebar.tsx with real task progress**
 
-In `src/components/layout/app-sidebar.tsx`, update the `SidebarGoalItem` function to use the shared `getGoalTasks` and `computeTaskProgress` functions instead of hardcoded `tasksDone = 0`.
+Three changes to `src/components/layout/app-sidebar.tsx`:
 
-Add import at top of file:
+**Change 1:** Add imports at the top of the file (after the existing imports):
 ```typescript
 import { getGoalTasks, computeTaskProgress } from "@/lib/hooks/use-goal-tasks"
-import { useDashboardStore } from "@/lib/store"
+import type { TaskDTO } from "@/lib/types"
 ```
 
-Update `SidebarGoalList` to accept `activeTasks` and pass them through:
+**Change 2:** In the `AppSidebar` function, add `activeTasks` read and pass to `SidebarGoalList`. Find this line:
+```typescript
+const focusGoal = useFloorStore((s) => s.focusGoal)
+```
+Add below it:
+```typescript
+const activeTasks = useDashboardStore((s) => s.activeTasks)
+```
+Then find the `<SidebarGoalList` call and replace it:
+```typescript
+// OLD:
+<SidebarGoalList goals={sortedGoals} focusedGoalId={focusedGoalId} onGoalClick={focusGoal} />
+// NEW:
+<SidebarGoalList goals={sortedGoals} focusedGoalId={focusedGoalId} onGoalClick={focusGoal} activeTasks={activeTasks} />
+```
+
+**Change 3:** Replace the entire `SidebarGoalList` and `SidebarGoalItem` functions (find them at the bottom of the file) with:
 
 ```typescript
 function SidebarGoalList({ goals, focusedGoalId, onGoalClick, activeTasks }: {
@@ -1185,11 +1255,7 @@ function SidebarGoalList({ goals, focusedGoalId, onGoalClick, activeTasks }: {
     </div>
   )
 }
-```
 
-Update `SidebarGoalItem` to compute real progress:
-
-```typescript
 function SidebarGoalItem({ goal, isActive, onClick, activeTasks }: {
   goal: GoalDTO
   isActive: boolean
@@ -1202,17 +1268,52 @@ function SidebarGoalItem({ goal, isActive, onClick, activeTasks }: {
   const isReview = goal.status === "review" || goal.status === "pending_review"
   const tasks = getGoalTasks(activeTasks, goal.id)
   const { done, total } = computeTaskProgress(tasks, goal.taskCount)
-  // ... rest unchanged, but replace tasksDone references with done
-```
 
-And in `AppSidebar`, read activeTasks and pass to list:
-```typescript
-const activeTasks = useDashboardStore((s) => s.activeTasks)
-// ...
-<SidebarGoalList goals={sortedGoals} focusedGoalId={focusedGoalId} onGoalClick={focusGoal} activeTasks={activeTasks} />
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-2 w-full px-2.5 py-2 rounded-lg text-left transition-colors mb-px",
+        isActive ? "bg-status-purple-surface" : "hover:bg-bg-hover",
+        isCompleted && "opacity-50",
+      )}
+    >
+      <span
+        className="w-2 h-2 rounded-full shrink-0"
+        style={{ backgroundColor: `var(--status-${color}-fg)` }}
+      />
+      <div className="flex-1 min-w-0">
+        <p className={cn(
+          "text-[13px] truncate",
+          isActive ? "font-semibold text-status-purple-fg" : "font-medium text-text-primary",
+        )}>
+          {goal.description}
+        </p>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <div className="w-10 h-[3px] rounded-full bg-border overflow-hidden">
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: total > 0 ? `${(done / total) * 100}%` : "0%",
+                backgroundColor: `var(--status-${color}-fg)`,
+              }}
+            />
+          </div>
+          <span className="text-[10px] font-mono text-text-muted">
+            {done}/{total}
+          </span>
+        </div>
+      </div>
+      {needsAttention && (
+        <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-status-yellow-surface text-status-yellow-fg shrink-0">!</span>
+      )}
+      {isReview && (
+        <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-status-purple-surface text-status-purple-fg shrink-0">R</span>
+      )}
+    </button>
+  )
+}
 ```
-
-Also add `import type { TaskDTO } from "@/lib/types"` if not already present.
 
 - [ ] **Step 2: Run tests**
 
