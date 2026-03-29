@@ -38,7 +38,7 @@ export function NewGoalScreen() {
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      void handleSend()
     }
   }
 
@@ -57,7 +57,7 @@ export function NewGoalScreen() {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="What would you like to build?"
+          placeholder="Describe your goal..."
           rows={1}
           className="w-full resize-none rounded-xl border border-border bg-bg-card px-4 py-3 pr-12 text-[15px] text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-status-purple-fg/40 transition-shadow"
           style={{ minHeight: 48, maxHeight: 200 }}

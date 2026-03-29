@@ -12,6 +12,10 @@ import { useDashboardStore } from "@/lib/store"
 import { useFloorStore } from "@/lib/floor-store"
 import { api } from "@/lib/api"
 
+function logFetchError(label: string) {
+  return (e: unknown) => console.error(`[LayoutShell] ${label} failed`, e)
+}
+
 export function LayoutShell({ children }: { children: React.ReactNode }) {
   useSSE()
   const theme = useUIStore((s) => s.theme)
@@ -20,6 +24,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   const fetchMetrics = useDashboardStore((s) => s.fetchMetrics)
   const fetchAlerts = useDashboardStore((s) => s.fetchAlerts)
   const wsRun = useWorkspaceStore((s) => s.run)
+  const hasAutoNavigated = useRef(false)
 
   useEffect(() => {
     document.documentElement.classList.remove("dark", "light")
@@ -38,20 +43,20 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
       .catch(() => useWorkspaceStore.getState().clear())
   }, [])
 
-  const hasAutoNavigated = useRef(false)
-
   // Consolidated data fetch when workspace is active
   useEffect(() => {
     if (wsRun?.status === "active") {
-      fetchLiveFloor().catch(() => {})
-      fetchPipeline().then(() => {
-        if (!hasAutoNavigated.current && useDashboardStore.getState().goals.length === 0) {
-          hasAutoNavigated.current = true
-          useFloorStore.getState().setActiveSection("new-goal")
-        }
-      }).catch(() => {})
-      fetchMetrics().catch(() => {})
-      fetchAlerts().catch(() => {})
+      fetchLiveFloor().catch(logFetchError("fetchLiveFloor"))
+      fetchPipeline()
+        .then(() => {
+          if (!hasAutoNavigated.current && useDashboardStore.getState().goals.length === 0) {
+            hasAutoNavigated.current = true
+            useFloorStore.getState().setActiveSection("new-goal")
+          }
+        })
+        .catch(logFetchError("fetchPipeline"))
+      fetchMetrics().catch(logFetchError("fetchMetrics"))
+      fetchAlerts().catch(logFetchError("fetchAlerts"))
     }
   }, [wsRun?.status, fetchLiveFloor, fetchPipeline, fetchMetrics, fetchAlerts])
 
