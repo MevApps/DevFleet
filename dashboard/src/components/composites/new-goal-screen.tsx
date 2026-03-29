@@ -1,10 +1,10 @@
 // src/components/composites/new-goal-screen.tsx
 "use client"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useFloorStore } from "@/lib/floor-store"
 import { useDashboardStore } from "@/lib/store"
 import { api } from "@/lib/api"
-import { ArrowUp } from "lucide-react"
+import { ArrowUp, ChevronLeft } from "lucide-react"
 
 export function NewGoalScreen() {
   const [description, setDescription] = useState("")
@@ -14,7 +14,16 @@ export function NewGoalScreen() {
   const fetchLiveFloor = useDashboardStore((s) => s.fetchLiveFloor)
   const fetchPipeline = useDashboardStore((s) => s.fetchPipeline)
 
+  const goBack = () => setActiveSection("floor")
   const canSend = description.trim().length > 0 && !sending
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") goBack()
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSend() {
     if (!canSend) return
@@ -43,7 +52,15 @@ export function NewGoalScreen() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center h-full px-4">
+    <div className="flex flex-col items-center justify-center h-full px-4 relative">
+      <button
+        onClick={goBack}
+        className="absolute top-0 left-0 p-1.5 rounded-lg border border-border bg-bg-card text-text-muted hover:bg-bg-hover"
+        aria-label="Back to floor"
+      >
+        <ChevronLeft size={16} />
+      </button>
+
       <h1 className="text-[28px] font-bold text-text-primary mb-8">
         What would you like to build?
       </h1>

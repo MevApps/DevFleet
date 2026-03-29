@@ -1,15 +1,15 @@
 // src/components/layout/app-sidebar.tsx
 "use client"
+import { useEffect } from "react"
 import { useUIStore } from "@/lib/ui-store"
 import { useFloorStore } from "@/lib/floor-store"
 import { useWorkspaceStore } from "@/lib/workspace-store"
 import { useDashboardStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
-import { formatCurrency } from "@/lib/utils/format"
+import { formatCurrency, sortGoalsByRecency } from "@/lib/utils/format"
 import { getStatusColor } from "@/lib/registry/statuses"
-import type { GoalDTO } from "@/lib/types"
+import type { GoalDTO, TaskDTO } from "@/lib/types"
 import { getGoalTasks, computeTaskProgress } from "@/lib/hooks/use-goal-tasks"
-import type { TaskDTO } from "@/lib/types"
 import {
   ChevronsLeft,
   Plus,
@@ -31,12 +31,18 @@ export function AppSidebar() {
   const setActiveSection = useFloorStore((s) => s.setActiveSection)
 
   const workspaceBudget = run?.config.maxCostUsd ?? 100
+  const sortedGoals = sortGoalsByRecency(goals)
 
-  const sortedGoals = [...goals].sort((a, b) => {
-    const aTime = a.completedAt ?? a.createdAt
-    const bTime = b.completedAt ?? b.createdAt
-    return new Date(bTime).getTime() - new Date(aTime).getTime()
-  })
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+        e.preventDefault()
+        useFloorStore.getState().setActiveSection("new-goal")
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [])
 
   return (
     <aside
@@ -63,6 +69,7 @@ export function AppSidebar() {
       {/* New Goal + Search */}
       <div className="px-2.5 flex flex-col gap-1.5">
         <button
+          onClick={() => setActiveSection("new-goal")}
           className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg border border-border bg-bg-card text-[13px] font-semibold text-text-primary hover:bg-bg-hover transition-colors"
           aria-label="New Goal"
         >

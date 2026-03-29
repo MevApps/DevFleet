@@ -1,7 +1,7 @@
 import { create } from "zustand"
 
 type ViewMode = "stream" | "kanban" | "table"
-type ActiveSection = "floor" | "settings" | "analytics" | "health"
+type ActiveSection = "floor" | "new-goal" | "settings" | "analytics" | "health"
 
 interface FloorState {
   viewMode: ViewMode

@@ -1,3 +1,13 @@
+import type { GoalDTO } from "@/lib/types"
+
+export function sortGoalsByRecency(goals: readonly GoalDTO[]): GoalDTO[] {
+  return [...goals].sort((a, b) => {
+    const aTime = a.completedAt ?? a.createdAt
+    const bTime = b.completedAt ?? b.createdAt
+    return new Date(bTime).getTime() - new Date(aTime).getTime()
+  })
+}
+
 export function formatTokens(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`
   if (count >= 1_000) return `${(count / 1_000).toFixed(0)}K`
