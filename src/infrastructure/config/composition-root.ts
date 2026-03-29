@@ -213,11 +213,15 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     : new ClaudeAgentSdkAdapter()
 
   // -------------------------------------------------------------------------
-  // 3. Worktree manager (in-memory for test, NodeWorktreeManager for production)
+  // 3. Shell factory + Worktree manager
   // -------------------------------------------------------------------------
+  const shellFactory: ShellExecutorFactory = useMock
+    ? (_path: string): ShellExecutor => createMockShell()
+    : (path: string): ShellExecutor => new NodeShellExecutor(path)
+
   const worktreeManager = useMock
     ? new InMemoryWorktreeManager()
-    : new NodeWorktreeManager(shell, config.workspaceDir)
+    : new NodeWorktreeManager(shell, config.workspaceDir, shellFactory)
 
   // -------------------------------------------------------------------------
   // 4. Use cases
@@ -249,10 +253,6 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const buildCommand = config.buildCommand ?? "npm run build"
   const testCommand = config.testCommand ?? "npm test"
   const runBuildAndTest = new RunBuildAndTest(shell, taskRepo, recordTurnMetrics, bus)
-
-  const shellFactory: ShellExecutorFactory = useMock
-    ? (_path: string): ShellExecutor => createMockShell()
-    : (path: string): ShellExecutor => new NodeShellExecutor(path)
 
   // -------------------------------------------------------------------------
   // 6. Agent IDs and models

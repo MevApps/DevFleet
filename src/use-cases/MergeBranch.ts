@@ -19,7 +19,7 @@ export class MergeBranch {
 
     console.log(`[MergeBranch] merging branch "${task.branch}" for task ${taskId}`)
     const mergeResult = await this.worktree.merge(task.branch)
-    console.log(`[MergeBranch] result: success=${mergeResult.success} commit=${mergeResult.commit?.slice(0, 8) ?? "none"} error=${mergeResult.error ?? "none"}`)
+    console.log(`[MergeBranch] result: success=${mergeResult.success} ${mergeResult.success ? `commit=${mergeResult.commit.slice(0, 8)}` : `error=${mergeResult.error}`}`)
     if (!mergeResult.success) {
       return failure(`Merge failed: ${mergeResult.error}`)
     }

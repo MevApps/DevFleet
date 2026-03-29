@@ -18,6 +18,31 @@ export class GitCloneIsolator implements WorkspaceIsolator {
     return handle
   }
 
+  async createBranch(handle: WorkspaceHandle, branchName: string): Promise<void> {
+    const dir = this.getWorkspaceDir(handle)
+    const shell = this.shellFactory(dir)
+    console.log(`[GitCloneIsolator] creating branch "${branchName}" in ${dir}`)
+    const result = await shell.execute("git", ["checkout", "-b", branchName])
+    if (result.exitCode !== 0) {
+      throw new Error(`git checkout -b failed: ${result.stderr}`)
+    }
+    console.log("[GitCloneIsolator] branch created successfully")
+  }
+
+  async detectDefaultBranch(handle: WorkspaceHandle): Promise<string> {
+    const dir = this.getWorkspaceDir(handle)
+    const shell = this.shellFactory(dir)
+    const result = await shell.execute("git", ["rev-parse", "--abbrev-ref", "origin/HEAD"])
+    if (result.exitCode === 0) {
+      const branch = result.stdout.trim().replace("origin/", "")
+      if (branch && branch !== "HEAD") return branch
+    }
+    // Fallback: check for master or main
+    const branches = await shell.execute("git", ["branch", "-r"])
+    if (branches.stdout.includes("origin/main")) return "main"
+    return "master"
+  }
+
   async installDependencies(handle: WorkspaceHandle, installCommand: string): Promise<void> {
     const dir = this.getWorkspaceDir(handle)
     if (!installCommand) return

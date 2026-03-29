@@ -91,6 +91,8 @@ function createMockIsolator(): WorkspaceIsolator & { handles: WorkspaceHandle[] 
       handles.push(handle)
       return handle
     },
+    async createBranch(_handle: WorkspaceHandle, _branchName: string) {},
+    async detectDefaultBranch(_handle: WorkspaceHandle) { return "master" },
     async installDependencies(_handle: WorkspaceHandle, _command: string) {},
     getWorkspaceDir(handle: WorkspaceHandle): string {
       return `/tmp/workspace-${handle.id}`

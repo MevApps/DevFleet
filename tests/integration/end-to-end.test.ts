@@ -62,6 +62,7 @@ describe("End-to-end integration: Developer agent completes a task", () => {
 
     const mockWorktree = {
       create: jest.fn().mockResolvedValue("/tmp/integration-worktree"),
+      commitAll: jest.fn().mockResolvedValue(true),
       delete: jest.fn().mockResolvedValue(undefined),
       merge: jest.fn().mockResolvedValue({ success: true as const, commit: "abc" }),
       exists: jest.fn().mockResolvedValue(false),

@@ -10,6 +10,8 @@ const mockHandle: WorkspaceHandle = { id: "test-workspace" }
 function createMockIsolator(): WorkspaceIsolator {
   return {
     create: async () => mockHandle,
+    createBranch: async () => undefined,
+    detectDefaultBranch: async () => "master",
     installDependencies: async () => undefined,
     getWorkspaceDir: () => "/tmp/test",
     cleanup: async () => undefined,

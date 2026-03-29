@@ -40,6 +40,7 @@ describe("DeveloperPlugin", () => {
   let bus: InMemoryBus
   let mockWorktree: {
     create: jest.Mock
+    commitAll: jest.Mock
     delete: jest.Mock
     merge: jest.Mock
     exists: jest.Mock
@@ -62,6 +63,7 @@ describe("DeveloperPlugin", () => {
       delete: jest.fn().mockResolvedValue(undefined),
       merge: jest.fn().mockResolvedValue({ success: true, commit: "abc" }),
       exists: jest.fn().mockResolvedValue(false),
+      commitAll: jest.fn().mockResolvedValue(true),
       cleanupAll: jest.fn().mockResolvedValue(undefined),
     }
 
@@ -236,6 +238,7 @@ describe("DeveloperPlugin – worktree isolation", () => {
       delete: jest.fn().mockResolvedValue(undefined),
       merge: jest.fn().mockResolvedValue({ success: true as const, commit: "abc" }),
       exists: jest.fn().mockResolvedValue(false),
+      commitAll: jest.fn().mockResolvedValue(true),
       cleanupAll: jest.fn().mockResolvedValue(undefined),
     }
 
@@ -290,6 +293,7 @@ describe("DeveloperPlugin – worktree isolation", () => {
       delete: jest.fn().mockResolvedValue(undefined),
       merge: jest.fn().mockResolvedValue({ success: true as const, commit: "abc" }),
       exists: jest.fn().mockResolvedValue(false),
+      commitAll: jest.fn().mockResolvedValue(true),
       cleanupAll: jest.fn().mockResolvedValue(undefined),
     }
 

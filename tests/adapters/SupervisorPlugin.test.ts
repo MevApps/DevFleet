@@ -50,6 +50,8 @@ describe("SupervisorPlugin", () => {
       goalId: createGoalId("g-1"), description: "Add auth", timestamp: new Date(),
     })
 
+    // goal.created is fire-and-forget — wait for the async handler to complete
+    await new Promise(resolve => setTimeout(resolve, 100))
     expect(decomposeCalled).toBe(true)
   })
 

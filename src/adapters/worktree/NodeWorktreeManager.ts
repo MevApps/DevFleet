@@ -1,20 +1,43 @@
 import type { WorktreeManager, WorktreePath, MergeResult } from "../../use-cases/ports/WorktreeManager"
-import type { ShellExecutor } from "../../use-cases/ports/ShellExecutor"
+import type { ShellExecutor, ShellExecutorFactory } from "../../use-cases/ports/ShellExecutor"
 import { join } from "node:path"
 
 const WORKTREES_DIR = ".worktrees"
 
 export class NodeWorktreeManager implements WorktreeManager {
+  private readonly shellFactory: ShellExecutorFactory
+
   constructor(
     private readonly shell: ShellExecutor,
     private readonly projectRoot: string,
-  ) {}
+    shellFactory?: ShellExecutorFactory,
+  ) {
+    this.shellFactory = shellFactory ?? ((_path: string) => shell)
+  }
 
   async create(branch: string, baseBranch?: string): Promise<WorktreePath> {
     const worktreePath = this.worktreePath(branch)
     const base = baseBranch ?? "HEAD"
     await this.shell.execute("git", ["worktree", "add", "-b", branch, worktreePath, base])
     return worktreePath
+  }
+
+  async commitAll(branch: string, message: string): Promise<boolean> {
+    const worktreePath = this.worktreePath(branch)
+    const wtShell = this.shellFactory(worktreePath)
+    await wtShell.execute("git", ["add", "-A"])
+    const status = await wtShell.execute("git", ["status", "--porcelain"])
+    if (!status.stdout.trim()) {
+      console.log(`[NodeWorktreeManager] no changes to commit on ${branch}`)
+      return false
+    }
+    const result = await wtShell.execute("git", ["commit", "-m", message])
+    if (result.exitCode !== 0) {
+      console.error(`[NodeWorktreeManager] commit failed on ${branch}:`, result.stderr)
+      return false
+    }
+    console.log(`[NodeWorktreeManager] committed changes on ${branch}`)
+    return true
   }
 
   async delete(branch: string): Promise<void> {

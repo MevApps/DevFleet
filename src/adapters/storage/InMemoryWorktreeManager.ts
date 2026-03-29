@@ -8,6 +8,10 @@ export class InMemoryWorktreeManager implements WorktreeManager {
     return `.worktrees/${branch}`
   }
 
+  async commitAll(_branch: string, _message: string): Promise<boolean> {
+    return true
+  }
+
   async delete(branch: string): Promise<void> {
     this.branches.delete(branch)
   }

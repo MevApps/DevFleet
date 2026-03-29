@@ -79,19 +79,7 @@ export class DeveloperPlugin implements PluginIdentity, Lifecycle, PluginMessage
     for await (const event of this.deps.executor.run(this.deps.agentId, config, task, this.deps.projectId)) {
       if (event.type === "task_completed") {
         // Commit any changes Claude Code wrote to the worktree
-        const { execFileSync } = await import("node:child_process")
-        try {
-          execFileSync("git", ["add", "-A"], { cwd: worktreePath })
-          const statusResult = execFileSync("git", ["status", "--porcelain"], { cwd: worktreePath }).toString()
-          if (statusResult.trim()) {
-            execFileSync("git", ["commit", "-m", `feat: ${task.description}`], { cwd: worktreePath })
-            console.log(`[DeveloperPlugin] committed changes on ${branchName}`)
-          } else {
-            console.log(`[DeveloperPlugin] no changes to commit on ${branchName}`)
-          }
-        } catch (err) {
-          console.error(`[DeveloperPlugin] git commit failed:`, err instanceof Error ? err.message : err)
-        }
+        await this.deps.worktreeManager.commitAll(branchName, `feat: ${task.description}`)
 
         await this.deps.bus.emit({
           id: createMessageId(),

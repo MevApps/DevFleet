@@ -6,6 +6,7 @@ export type MergeResult =
 
 export interface WorktreeManager {
   create(branch: string, baseBranch?: string): Promise<WorktreePath>
+  commitAll(branch: string, message: string): Promise<boolean>
   delete(branch: string): Promise<void>
   merge(branch: string, targetBranch?: string): Promise<MergeResult>
   exists(branch: string): Promise<boolean>
