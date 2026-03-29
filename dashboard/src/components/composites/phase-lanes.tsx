@@ -4,9 +4,9 @@ import { TaskCard } from "./task-card"
 import { getTaskDisplayPhase } from "@/lib/hooks/use-goal-tasks"
 import { ArrowRight } from "lucide-react"
 
-const PHASES = ["planning", "implementation", "review", "done"] as const
+export const PHASES = ["planning", "implementation", "review", "done"] as const
 
-const PHASE_CONFIG: Record<string, { label: string; dotColor: string }> = {
+export const PHASE_CONFIG: Record<string, { label: string; dotColor: string }> = {
   planning: { label: "Planning", dotColor: "var(--status-green-fg)" },
   implementation: { label: "Implementation", dotColor: "var(--status-blue-fg)" },
   review: { label: "Review", dotColor: "var(--status-purple-fg)" },

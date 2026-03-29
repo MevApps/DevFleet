@@ -3,6 +3,7 @@ import { useDashboardStore } from "@/lib/store"
 import { usePolling } from "@/hooks/use-polling"
 import { KanbanColumn } from "@/components/composites/kanban-column"
 import { GoalCard } from "@/components/composites/goal-card"
+import { PHASE_CONFIG } from "@/components/composites/phase-lanes"
 
 export default function PipelinePage() {
   const { phases, tasksByPhase, goals } = useDashboardStore()
@@ -23,7 +24,15 @@ export default function PipelinePage() {
       <div>
         <h2 className="text-lg font-medium mb-3 text-text-primary">Pipeline</h2>
         <div className="flex gap-4 overflow-x-auto pb-4">
-          {phases.map((phase) => (<KanbanColumn key={phase} phase={phase} tasks={tasksByPhase[phase] ?? []} />))}
+          {phases.map((phase) => (
+            <KanbanColumn
+              key={phase}
+              phase={phase}
+              tasks={tasksByPhase[phase] ?? []}
+              goals={goals}
+              dotColor={PHASE_CONFIG[phase]?.dotColor ?? "var(--status-zinc-fg)"}
+            />
+          ))}
         </div>
       </div>
     </div>
