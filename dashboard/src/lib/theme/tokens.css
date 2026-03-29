@@ -114,9 +114,10 @@
   --radius-xl: 12px;
   --radius-full: 9999px;
 
-  --sidebar-width: 200px;
+  --sidebar-width: 260px;
   --sidebar-collapsed-width: 48px;
   --topbar-height: 48px;
+  --inspector-width: 380px;
 }
 
 /* ===== DENSITY: COMPACT ===== */
