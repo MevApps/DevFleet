@@ -19,7 +19,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   error: null,
 
   setStatus: (dto) =>
-    set({ run: dto.run, goalSummaries: dto.goalSummaries, costUsd: dto.costUsd, error: null }),
+    set({ run: dto.run, goalSummaries: dto.goalSummaries ?? [], costUsd: dto.costUsd ?? 0, error: null }),
 
   setError: (error) => set({ error }),
 

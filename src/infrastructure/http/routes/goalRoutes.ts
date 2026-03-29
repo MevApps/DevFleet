@@ -27,13 +27,18 @@ export function goalRoutes(
       const maxTokens = body.maxTokens ?? 0
       const maxCostUsd = body.maxCostUsd ?? 0
 
+      console.log("[goalRoutes] POST /goals body:", JSON.stringify(body))
+
       // When a workspace is active, use its CreateGoalFromCeo
       const wsCreateGoal = workspaceManager
         ? await workspaceManager.getActiveCreateGoal()
         : null
+      console.log("[goalRoutes] wsCreateGoal:", wsCreateGoal ? "workspace" : "main")
       const effectiveCreateGoal = wsCreateGoal ?? createGoal
 
+      console.log("[goalRoutes] calling execute...")
       const result = await effectiveCreateGoal.execute({ description, maxTokens, maxCostUsd })
+      console.log("[goalRoutes] execute returned, ok:", result.ok)
       if (!result.ok) {
         res.status(400).json({ error: result.error })
         return

@@ -59,7 +59,23 @@ export function workspaceRoutes(
         res.status(500).json({ error: "Run not found in repository" })
         return
       }
-      res.json({ run })
+
+      // Query the workspace's internal system for goal data
+      const system = manager.getActiveSystem()
+      let goalSummaries: Array<{ goalId: string; description: string; status: string; costUsd: number; durationMs: number; prUrl: string | null }> = []
+      if (system) {
+        const goals = await system.goalRepo.findAll()
+        goalSummaries = goals.map(g => ({
+          goalId: g.id,
+          description: g.description,
+          status: g.status,
+          costUsd: 0,
+          durationMs: g.completedAt ? g.completedAt.getTime() - g.createdAt.getTime() : Date.now() - g.createdAt.getTime(),
+          prUrl: null,
+        }))
+      }
+
+      res.json({ run, goalSummaries, costUsd: 0 })
     } catch (err) {
       next(err)
     }

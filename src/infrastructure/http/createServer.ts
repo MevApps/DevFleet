@@ -79,7 +79,9 @@ export function createServer(deps: DashboardDeps): Express {
   // Presenter endpoints
   app.get("/api/live-floor", async (_req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await deps.liveFloor.present()
+      const ws = deps.workspaceManager.getActiveSystem()
+      const presenter = ws ? ws.dashboardDeps.liveFloor : deps.liveFloor
+      const data = await presenter.present()
       res.json(data)
     } catch (err) {
       next(err)
@@ -88,7 +90,9 @@ export function createServer(deps: DashboardDeps): Express {
 
   app.get("/api/pipeline", async (_req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await deps.pipeline.present()
+      const ws = deps.workspaceManager.getActiveSystem()
+      const presenter = ws ? ws.dashboardDeps.pipeline : deps.pipeline
+      const data = await presenter.present()
       res.json(data)
     } catch (err) {
       next(err)
