@@ -19,8 +19,15 @@ export function mapCapabilities(capabilities: ReadonlyArray<AgentCapability>): s
 export class ClaudeAgentSdkAdapter implements AgentSession {
   async *launch(task: PhaseTask, signal: AbortSignal): AsyncIterable<SessionEvent> {
     // Dynamic import required: the SDK is ESM-only while this project is CJS
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { query } = await (Function('return import("@anthropic-ai/claude-agent-sdk")')() as Promise<{ query: (...args: any[]) => AsyncIterable<any> }>)
+    let query: (...args: any[]) => AsyncIterable<any>
+    try {
+      const mod = await (Function('return import("@anthropic-ai/claude-agent-sdk")')() as Promise<{ query: (...args: any[]) => AsyncIterable<any> }>)
+      query = mod.query
+    } catch (importErr) {
+      console.error("[ClaudeAgentSdkAdapter] SDK import FAILED:", importErr instanceof Error ? importErr.message : importErr)
+      yield { type: "error", reason: `SDK import failed: ${importErr instanceof Error ? importErr.message : importErr}` }
+      return
+    }
 
     const allowedTools = mapCapabilities(task.capabilities)
 
@@ -74,6 +81,7 @@ export class ClaudeAgentSdkAdapter implements AgentSession {
               numTurns: message.num_turns,
             }
           } else {
+            console.error(`[ClaudeAgentSdkAdapter] session FAILED: ${message.subtype}`, message.errors ?? "")
             yield {
               type: "error",
               reason: message.errors?.join("; ") ?? `Session failed: ${message.subtype}`,

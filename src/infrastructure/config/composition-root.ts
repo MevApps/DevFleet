@@ -237,7 +237,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const computeTimings = new ComputePhaseTimings(eventStore, taskRepo)
   const acceptInsight = new AcceptInsight(insightRepo, agentPromptStore, budgetConfigStore, agentRegistry, skillStore, bus, notificationPort)
   const dismissInsight = new DismissInsight(insightRepo)
-  const agentTimeoutMs = config.agentTimeoutMs ?? 300_000 // 5 min
+  const agentTimeoutMs = config.agentTimeoutMs ?? 900_000 // 15 min — real Claude Code sessions need time
 
   // -------------------------------------------------------------------------
   // 5. Agent executor and build/test use cases

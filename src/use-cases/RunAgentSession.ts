@@ -32,7 +32,7 @@ export class RunAgentSession implements AgentExecutor {
       taskDescription: task.description,
       workingDir: config.workingDir ?? "/tmp",
       capabilities: config.capabilities ?? [],
-      maxTurns: config.budget.maxTokens > 50000 ? 30 : 20,
+      maxTurns: (config.capabilities ?? []).length > 0 ? 50 : 10,
       model: config.model,
     }
 
