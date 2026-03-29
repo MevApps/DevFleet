@@ -2,6 +2,7 @@
 import { useInspectorStore } from "@/lib/inspector-store"
 import { cn } from "@/lib/utils"
 import { X, Pin } from "lucide-react"
+import { getInspectorComponent } from "@/components/inspector/inspector-registry"
 
 export function InspectorPanel() {
   const selectedEntityId = useInspectorStore((s) => s.selectedEntityId)
@@ -69,11 +70,15 @@ export function InspectorPanel() {
         </div>
       )}
 
-      {/* Body — Phase 3 will add type-specific inspectors here */}
+      {/* Body — type-specific inspector */}
       <div className="flex-1 p-4">
-        <p className="text-sm text-text-muted">
-          Inspector content will be implemented in Phase 3.
-        </p>
+        {(() => {
+          const InspectorComponent = selectedEntityType ? getInspectorComponent(selectedEntityType) : null
+          if (!InspectorComponent) {
+            return <p className="text-sm text-text-muted">Unknown entity type.</p>
+          }
+          return <InspectorComponent entityId={selectedEntityId} />
+        })()}
       </div>
     </div>
   )
