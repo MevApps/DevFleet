@@ -29,10 +29,11 @@
 | `src/components/inspector/__tests__/agent-inspector.test.tsx` | Tests for AgentInspector |
 | `src/components/inspector/event-inspector.tsx` | Inspector content for events: type, parent chain, timestamp |
 | `src/components/inspector/inspector-registry.ts` | Map of entityType → inspector component (strategy pattern) |
-| `src/components/composites/activity-thread.tsx` | Vertical timeline of entity-scoped events (replaces ActivityFeed for inspector use) |
+| `src/components/composites/activity-thread.tsx` | Vertical timeline of entity-scoped events (replaces ActivityFeed for inspector use). Exports `eventToStatus()` for reuse. |
 | `src/components/composites/__tests__/activity-thread.test.tsx` | Tests for ActivityThread |
 | `src/components/composites/diff-viewer.tsx` | Syntax-highlighted code diff display |
 | `src/components/composites/__tests__/diff-viewer.test.tsx` | Tests for DiffViewer |
+| `src/components/inspector/insp-stat.tsx` | Shared stat card component used by GoalInspector, TaskInspector, AgentInspector |
 
 ### Modified Files
 | File | Change |
@@ -104,7 +105,7 @@ import type { EventDTO } from "@/lib/types"
 import { StatusDot } from "@/components/primitives/status-dot"
 import { formatTimeAgo } from "@/lib/utils/format"
 
-function eventToStatus(type: string): string {
+export function eventToStatus(type: string): string {
   if (type.includes("completed") || type.includes("approved") || type.includes("merged")) return "completed"
   if (type.includes("created") || type.includes("assigned")) return "active"
   if (type.includes("failed") || type.includes("rejected") || type.includes("discarded")) return "failed"
@@ -346,11 +347,31 @@ git commit -m "feat(inspector): add TaskDiffDTO types and taskDiff API method"
 
 ---
 
-## Task 4: Create `GoalInspector`
+## Task 4: Create `InspStat` + `GoalInspector`
 
 **Files:**
+- Create: `src/components/inspector/insp-stat.tsx`
 - Create: `src/components/inspector/goal-inspector.tsx`
 - Create: `src/components/inspector/__tests__/goal-inspector.test.tsx`
+
+- [ ] **Step 0: Create shared InspStat component**
+
+```typescript
+// src/components/inspector/insp-stat.tsx
+interface InspStatProps {
+  label: string
+  children: React.ReactNode
+}
+
+export function InspStat({ label, children }: InspStatProps) {
+  return (
+    <div className="rounded-lg bg-bg-hover p-2.5">
+      <p className="text-[11px] text-text-muted">{label}</p>
+      <div className="text-[15px] font-bold text-text-primary mt-0.5">{children}</div>
+    </div>
+  )
+}
+```
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -413,6 +434,7 @@ Expected: FAIL — module not found. Create the directory first: `mkdir -p src/c
 import { useDashboardStore } from "@/lib/store"
 import { StatusBadge } from "@/components/primitives/status-badge"
 import { ActivityThread } from "@/components/composites/activity-thread"
+import { InspStat } from "./insp-stat"
 import { getGoalTasks, computeTaskProgress, computePhaseSegments, SEGMENT_COLORS } from "@/lib/hooks/use-goal-tasks"
 import { formatCurrency } from "@/lib/utils/format"
 
@@ -476,15 +498,6 @@ export function GoalInspector({ entityId }: GoalInspectorProps) {
     </div>
   )
 }
-
-function InspStat({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg bg-bg-hover p-2.5">
-      <p className="text-[11px] text-text-muted">{label}</p>
-      <div className="text-[15px] font-bold text-text-primary mt-0.5">{children}</div>
-    </div>
-  )
-}
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -495,8 +508,8 @@ Expected: All 4 tests PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add dashboard/src/components/inspector/goal-inspector.tsx dashboard/src/components/inspector/__tests__/goal-inspector.test.tsx
-git commit -m "feat(inspector): add GoalInspector — description, budget, task list, activity"
+git add dashboard/src/components/inspector/insp-stat.tsx dashboard/src/components/inspector/goal-inspector.tsx dashboard/src/components/inspector/__tests__/goal-inspector.test.tsx
+git commit -m "feat(inspector): add InspStat shared component + GoalInspector"
 ```
 
 ---
@@ -584,6 +597,7 @@ import { useDashboardStore } from "@/lib/store"
 import { StatusBadge } from "@/components/primitives/status-badge"
 import { ActivityThread } from "@/components/composites/activity-thread"
 import { DiffViewer } from "@/components/composites/diff-viewer"
+import { InspStat } from "./insp-stat"
 import { formatTokens, formatCurrency } from "@/lib/utils/format"
 import { cn } from "@/lib/utils"
 
@@ -684,15 +698,6 @@ export function TaskInspector({ entityId }: TaskInspectorProps) {
     </div>
   )
 }
-
-function InspStat({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg bg-bg-hover p-2.5">
-      <p className="text-[11px] text-text-muted">{label}</p>
-      <div className="text-[15px] font-bold text-text-primary mt-0.5">{children}</div>
-    </div>
-  )
-}
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -785,6 +790,7 @@ import { useDashboardStore } from "@/lib/store"
 import { useInspectorStore } from "@/lib/inspector-store"
 import { StatusBadge } from "@/components/primitives/status-badge"
 import { ActivityThread } from "@/components/composites/activity-thread"
+import { InspStat } from "./insp-stat"
 import { api } from "@/lib/api"
 
 interface AgentInspectorProps {
@@ -860,15 +866,6 @@ export function AgentInspector({ entityId }: AgentInspectorProps) {
     </div>
   )
 }
-
-function InspStat({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg bg-bg-hover p-2.5">
-      <p className="text-[11px] text-text-muted">{label}</p>
-      <div className="text-[15px] font-bold text-text-primary mt-0.5">{children}</div>
-    </div>
-  )
-}
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -898,15 +895,8 @@ git commit -m "feat(inspector): add AgentInspector — role, model, current task
 import { useDashboardStore } from "@/lib/store"
 import { useInspectorStore } from "@/lib/inspector-store"
 import { StatusDot } from "@/components/primitives/status-dot"
+import { eventToStatus } from "@/components/composites/activity-thread"
 import { formatTimeAgo } from "@/lib/utils/format"
-
-function eventToStatus(type: string): string {
-  if (type.includes("completed") || type.includes("approved") || type.includes("merged")) return "completed"
-  if (type.includes("created") || type.includes("assigned")) return "active"
-  if (type.includes("failed") || type.includes("rejected") || type.includes("discarded")) return "failed"
-  if (type.includes("review")) return "review"
-  return "idle"
-}
 
 interface EventInspectorProps {
   entityId: string
