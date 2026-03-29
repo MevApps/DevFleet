@@ -4,6 +4,7 @@ import { type TokenBudget } from "./Budget"
 export type TaskStatus =
   | "queued"
   | "in_progress"
+  | "completed"
   | "review"
   | "approved"
   | "merged"
@@ -28,7 +29,8 @@ export interface Task {
 // Terminal states have no outgoing transitions
 export const ALLOWED_TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
   queued: ["in_progress", "discarded"],
-  in_progress: ["review", "discarded"],
+  in_progress: ["completed", "review", "discarded"],
+  completed: [],
   review: ["approved", "in_progress", "merged", "discarded"],
   approved: ["merged", "discarded"],
   merged: [],
