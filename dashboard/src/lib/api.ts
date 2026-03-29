@@ -1,4 +1,4 @@
-import type { LiveFloorData, PipelineData, MetricsSummary, GoalDTO, FinancialsData, QualityData, TimingsData, InsightSummary, InsightDetail, CeoAlertData, AlertPreferencesData, PluginHealth, WorkspaceStartInput, WorkspaceStatusDTO } from "./types"
+import type { LiveFloorData, PipelineData, MetricsSummary, GoalDTO, FinancialsData, QualityData, TimingsData, InsightSummary, InsightDetail, CeoAlertData, AlertPreferencesData, PluginHealth, WorkspaceStartInput, WorkspaceStatusDTO, TaskDiffDTO } from "./types"
 const BASE = "/api"
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)
@@ -37,4 +37,5 @@ export const api = {
   workspaceStatus: () => get<WorkspaceStatusDTO>("/workspace/status"),
   workspaceStop: () => post<{ status: string; clonePath?: string }>("/workspace/stop", {}),
   workspaceCleanup: () => post<{ status: string }>("/workspace/cleanup", {}),
+  taskDiff: (taskId: string) => get<TaskDiffDTO>(`/tasks/${taskId}/diff`),
 }

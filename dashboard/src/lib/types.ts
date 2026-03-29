@@ -68,3 +68,9 @@ export interface WorkspaceStatusDTO {
   readonly costUsd: number
   readonly goalSummaries: readonly WorkspaceGoalSummaryDTO[]
 }
+
+// Diff types (Phase 3)
+export interface DiffLineDTO { readonly type: "addition" | "deletion" | "context"; readonly content: string }
+export interface DiffHunkDTO { readonly lines: readonly DiffLineDTO[] }
+export interface DiffFileDTO { readonly path: string; readonly additions: number; readonly deletions: number; readonly hunks: readonly DiffHunkDTO[] }
+export interface TaskDiffDTO { readonly taskId: string; readonly files: readonly DiffFileDTO[] }
