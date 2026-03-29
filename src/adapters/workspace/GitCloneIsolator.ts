@@ -25,7 +25,18 @@ export class GitCloneIsolator implements WorkspaceIsolator {
     const parts = installCommand.split(/\s+/)
     const command = parts[0]!
     const args = parts.slice(1)
-    await scopedShell.execute(command, args, 120_000)
+    console.log(`[GitCloneIsolator] running "${installCommand}" in ${dir}`)
+    let result = await scopedShell.execute(command, args, 180_000)
+    if (result.exitCode !== 0 && command === "npm" && args[0] === "install") {
+      // Retry with --legacy-peer-deps for projects with peer dependency conflicts
+      console.log("[GitCloneIsolator] retrying with --legacy-peer-deps")
+      result = await scopedShell.execute(command, [...args, "--legacy-peer-deps"], 180_000)
+    }
+    if (result.exitCode !== 0) {
+      console.error(`[GitCloneIsolator] install failed (exit ${result.exitCode}):`, result.stderr.slice(0, 500))
+    } else {
+      console.log("[GitCloneIsolator] install succeeded")
+    }
   }
 
   getWorkspaceDir(handle: WorkspaceHandle): string {
