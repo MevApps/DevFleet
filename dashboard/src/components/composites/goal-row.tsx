@@ -16,11 +16,11 @@ const ATTENTION_STATUSES = new Set(["blocked", "failed"])
 export function GoalRow({ goal }: { goal: GoalDTO }) {
   const expandedGoalIds = useFloorStore((s) => s.expandedGoalIds)
   const toggleGoalExpanded = useFloorStore((s) => s.toggleGoalExpanded)
-  const activeTasks = useDashboardStore((s) => s.activeTasks)
+  const allTasks = useDashboardStore((s) => s.allTasks)
   const openInspector = useInspectorStore((s) => s.open)
 
   const isExpanded = expandedGoalIds.has(goal.id)
-  const tasks = getGoalTasks(activeTasks, goal.id)
+  const tasks = getGoalTasks(allTasks, goal.id)
   const segments = computePhaseSegments(tasks)
   const { done, total } = computeTaskProgress(tasks, goal.taskCount)
   const needsAttention = ATTENTION_STATUSES.has(goal.status)

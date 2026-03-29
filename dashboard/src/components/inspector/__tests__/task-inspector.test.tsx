@@ -15,7 +15,7 @@ const makeTask = (overrides?: Partial<TaskDTO>): TaskDTO => ({
 describe("TaskInspector", () => {
   beforeEach(() => {
     useDashboardStore.setState({
-      activeTasks: [makeTask()],
+      allTasks: [makeTask()],
       recentEvents: [],
     })
   })
@@ -45,7 +45,7 @@ describe("TaskInspector", () => {
   })
 
   it("renders Retry button for failed status", () => {
-    useDashboardStore.setState({ activeTasks: [makeTask({ status: "failed" })] })
+    useDashboardStore.setState({ allTasks: [makeTask({ status: "failed" })] })
     render(<TaskInspector entityId="t-1" />)
     expect(screen.getByText(/retry/i)).toBeInTheDocument()
   })

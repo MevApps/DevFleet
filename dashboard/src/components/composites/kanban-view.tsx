@@ -8,14 +8,14 @@ import { PHASES, PHASE_CONFIG } from "./phase-lanes"
 import { getTaskDisplayPhase } from "@/lib/hooks/use-goal-tasks"
 
 export function KanbanView() {
-  const activeTasks = useDashboardStore((s) => s.activeTasks)
+  const allTasks = useDashboardStore((s) => s.allTasks)
   const goals = useDashboardStore((s) => s.goals)
   const kanbanGoalFilter = useFloorStore((s) => s.kanbanGoalFilter)
   const openInspector = useInspectorStore((s) => s.open)
 
   const filteredTasks = kanbanGoalFilter
-    ? activeTasks.filter((t) => t.goalId === kanbanGoalFilter)
-    : activeTasks
+    ? allTasks.filter((t) => t.goalId === kanbanGoalFilter)
+    : [...allTasks]
 
   const tasksByPhase: Record<string, typeof filteredTasks[number][]> = Object.fromEntries(
     PHASES.map((p) => [p, []])

@@ -17,7 +17,7 @@ const makeGoal = (overrides?: Partial<GoalDTO>): GoalDTO => ({
 describe("GoalRow", () => {
   beforeEach(() => {
     useFloorStore.setState({ expandedGoalIds: new Set() })
-    useDashboardStore.setState({ activeTasks: [] })
+    useDashboardStore.setState({ allTasks: [] })
   })
 
   it("renders goal description", () => {

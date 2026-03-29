@@ -23,7 +23,7 @@ describe("KanbanView", () => {
     useFloorStore.setState({ kanbanGoalFilter: null })
     useDashboardStore.setState({
       goals: [makeGoal()],
-      activeTasks: [
+      allTasks: [
         makeTask({ id: "t-1", status: "in_progress", phase: "implementation" }),
         makeTask({ id: "t-2", status: "completed", phase: "implementation" }),
       ],
@@ -54,7 +54,7 @@ describe("KanbanView", () => {
         makeGoal({ id: "g-1", description: "OAuth2" }),
         makeGoal({ id: "g-2", description: "Redis" }),
       ],
-      activeTasks: [
+      allTasks: [
         makeTask({ id: "t-1", goalId: "g-1", description: "OAuth task" }),
         makeTask({ id: "t-2", goalId: "g-2", description: "Redis task" }),
       ],

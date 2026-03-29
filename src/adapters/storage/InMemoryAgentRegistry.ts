@@ -36,6 +36,7 @@ export class InMemoryAgentRegistry implements AgentRegistry {
       ...agent,
       status,
       currentTaskId: taskId !== undefined ? taskId : agent.currentTaskId,
+      lastActiveAt: new Date(),
     })
   }
 

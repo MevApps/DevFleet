@@ -1,5 +1,7 @@
 import type { LiveFloorData, PipelineData, MetricsSummary, GoalDTO, FinancialsData, QualityData, TimingsData, InsightSummary, InsightDetail, CeoAlertData, AlertPreferencesData, PluginHealth, WorkspaceStartInput, WorkspaceStatusDTO, TaskDiffDTO } from "./types"
-const BASE = "/api"
+const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3100"
+const BASE = `${API_ORIGIN}/api`
+export const SSE_URL = `${BASE}/events/stream`
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)

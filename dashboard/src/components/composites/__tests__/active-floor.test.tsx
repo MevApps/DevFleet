@@ -16,7 +16,7 @@ const makeGoal = (overrides?: Partial<GoalDTO>): GoalDTO => ({
 describe("ActiveFloor", () => {
   beforeEach(() => {
     useFloorStore.setState({ viewMode: "stream", focusedGoalId: null, activeSection: "floor" })
-    useDashboardStore.setState({ goals: [], activeTasks: [], agents: [] })
+    useDashboardStore.setState({ goals: [], allTasks: [], agents: [] })
   })
 
   it("renders Stream view with view mode toggle", () => {

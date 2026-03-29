@@ -43,7 +43,7 @@ describe("Phase 3 — API Integration", () => {
     // 5. Live floor shows agents
     const liveFloor = await request(app).get("/api/live-floor")
     expect(liveFloor.body.agents).toHaveLength(7)
-    expect(liveFloor.body).toHaveProperty("activeTasks")
+    expect(liveFloor.body).toHaveProperty("allTasks")
     expect(liveFloor.body).toHaveProperty("recentEvents")
 
     // 6. Pipeline shows phases

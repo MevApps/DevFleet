@@ -12,14 +12,14 @@ interface GoalInspectorProps {
 
 export function GoalInspector({ entityId }: GoalInspectorProps) {
   const goal = useDashboardStore((s) => s.goals.find((g) => g.id === entityId))
-  const activeTasks = useDashboardStore((s) => s.activeTasks)
+  const allTasks = useDashboardStore((s) => s.allTasks)
   const recentEvents = useDashboardStore((s) => s.recentEvents)
 
   if (!goal) {
     return <p className="text-sm text-text-muted">Goal not found.</p>
   }
 
-  const tasks = getGoalTasks(activeTasks, goal.id)
+  const tasks = getGoalTasks(allTasks, goal.id)
   const { done, total } = computeTaskProgress(tasks, goal.taskCount)
   const segments = computePhaseSegments(tasks)
   const budgetUsed = goal.totalBudget.maxCostUsd - goal.totalBudget.remaining

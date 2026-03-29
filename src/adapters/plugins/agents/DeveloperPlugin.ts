@@ -6,6 +6,7 @@ import type { AgentExecutor } from "../../../use-cases/ports/AgentExecutor"
 import type { TaskRepository } from "../../../use-cases/ports/TaskRepository"
 import type { MessagePort } from "../../../use-cases/ports/MessagePort"
 import type { WorktreeManager } from "../../../use-cases/ports/WorktreeManager"
+import type { AgentRegistry } from "../../../use-cases/ports/AgentRegistry"
 import { ROLES } from "../../../entities/AgentRole"
 
 export interface DeveloperPluginDeps {
@@ -17,6 +18,7 @@ export interface DeveloperPluginDeps {
   readonly model: string
   readonly bus: MessagePort
   readonly worktreeManager: WorktreeManager
+  readonly agentRegistry: AgentRegistry
   readonly workspaceDir: string
 }
 
@@ -76,22 +78,37 @@ export class DeveloperPlugin implements PluginIdentity, Lifecycle, PluginMessage
       workingDir: worktreePath,
     }
 
-    for await (const event of this.deps.executor.run(this.deps.agentId, config, task, this.deps.projectId)) {
-      if (event.type === "task_completed") {
-        // Commit any changes Claude Code wrote to the worktree
-        await this.deps.worktreeManager.commitAll(branchName, `feat: ${task.description}`)
+    try {
+      for await (const event of this.deps.executor.run(this.deps.agentId, config, task, this.deps.projectId)) {
+        if (event.type === "task_completed") {
+          // Commit any changes Claude Code wrote to the worktree
+          await this.deps.worktreeManager.commitAll(branchName, `feat: ${task.description}`)
 
-        await this.deps.bus.emit({
-          id: createMessageId(),
-          type: "code.completed",
-          taskId: message.taskId,
-          artifactId: createArtifactId(),
-          branch: branchName,
-          filesChanged: 0,
-          testsWritten: 0,
-          timestamp: new Date(),
-        })
+          await this.deps.bus.emit({
+            id: createMessageId(),
+            type: "code.completed",
+            taskId: message.taskId,
+            artifactId: createArtifactId(),
+            branch: branchName,
+            filesChanged: 0,
+            testsWritten: 0,
+            timestamp: new Date(),
+          })
+        }
       }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      console.error(`[DeveloperPlugin] agent=${this.deps.agentId} task=${task.id} failed:`, reason)
+      await this.deps.worktreeManager.delete(branchName).catch(() => {})
+      await this.deps.agentRegistry.updateStatus(this.deps.agentId, "idle", null)
+      await this.deps.bus.emit({
+        id: createMessageId(),
+        type: "task.failed",
+        taskId: message.taskId,
+        agentId: this.deps.agentId,
+        reason,
+        timestamp: new Date(),
+      })
     }
   }
 }

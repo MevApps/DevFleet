@@ -29,7 +29,7 @@ const COLUMNS: { key: SortableColumn; label: string; filterable: boolean }[] = [
 ]
 
 export function TableView() {
-  const activeTasks = useDashboardStore((s) => s.activeTasks)
+  const allTasks = useDashboardStore((s) => s.allTasks)
   const goals = useDashboardStore((s) => s.goals)
   const openInspector = useInspectorStore((s) => s.open)
 
@@ -41,7 +41,7 @@ export function TableView() {
   const goalMap = useMemo(() => new Map(goals.map((g) => [g.id, g])), [goals])
   const tableTasks: TableTask[] = useMemo(
     () =>
-      activeTasks.map((t) => {
+      allTasks.map((t) => {
         const goal = goalMap.get(t.goalId)
         return {
           id: t.id,
@@ -55,7 +55,7 @@ export function TableView() {
           lastActivity: goal?.completedAt ?? goal?.createdAt ?? "",
         }
       }),
-    [activeTasks, goalMap],
+    [allTasks, goalMap],
   )
 
   const filtered = useMemo(() => filterTasks(tableTasks, filters), [tableTasks, filters])
@@ -105,7 +105,7 @@ export function TableView() {
     setSelectedIds(new Set())
   }
 
-  if (activeTasks.length === 0) {
+  if (allTasks.length === 0) {
     return <p className="text-sm text-text-muted py-6 text-center">No tasks to display.</p>
   }
 

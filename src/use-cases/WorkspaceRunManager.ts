@@ -3,7 +3,7 @@ import type { WorkspaceIsolator, WorkspaceHandle } from "./ports/WorkspaceIsolat
 import type { FileSystemFactory } from "./ports/FileSystem"
 import type { GitRemote } from "./ports/GitRemote"
 import type { PullRequestCreator } from "./ports/PullRequestCreator"
-import type { Unsubscribe } from "./ports/MessagePort"
+import type { MessagePort, Unsubscribe } from "./ports/MessagePort"
 import type { WorkspaceRunId } from "../entities/ids"
 import type { WorkspaceRunConfig, WorkspaceRun } from "../entities/WorkspaceRun"
 import type { DevFleetSystem, DevFleetConfig } from "../infrastructure/config/composition-root"
@@ -25,6 +25,7 @@ export interface WorkspaceRunManagerDeps {
   readonly prCreator: PullRequestCreator
   readonly autoMerge: boolean
   readonly buildSystem: (config: DevFleetConfig) => Promise<DevFleetSystem>
+  readonly parentBus: MessagePort
   readonly mockMode?: boolean
 }
 
@@ -39,6 +40,19 @@ interface ActiveRunEntry {
 }
 
 const BRANCH_PREFIX = "devfleet/workspace-"
+
+// Event types forwarded from workspace bus to the parent bus (SSE dashboard, alerts).
+// Intentionally limited — internal workspace events stay private.
+const BRIDGED_EVENT_TYPES = [
+  "goal.created", "goal.completed", "goal.abandoned",
+  "task.created", "task.assigned", "task.completed", "task.failed",
+  "code.completed",
+  "review.approved", "review.rejected",
+  "branch.merged", "branch.discarded",
+  "agent.stuck",
+  "workspace.goal.delivered", "workspace.goal.failed",
+  "workspace.status.changed",
+] as const
 
 // ---------------------------------------------------------------------------
 // WorkspaceRunManager — central orchestrator for workspace lifecycle
@@ -103,8 +117,14 @@ export class WorkspaceRunManager {
       const system = await this.deps.buildSystem(systemConfig)
       await system.start()
 
+      // Forward SSE-relevant workspace events to the parent bus for dashboard updates
+      const unsubBridge = system.bus.subscribe(
+        { types: BRIDGED_EVENT_TYPES },
+        async (message) => { await this.deps.parentBus.emit(message) },
+      )
+
       // Subscribe to bus for goal lifecycle events
-      const unsubscribes = this.subscribeToBus(runId, system, config, cloneDir, defaultBranch)
+      const unsubscribes = [unsubBridge, ...this.subscribeToBus(runId, system, config, cloneDir, defaultBranch)]
 
       // Track the active run
       this.runs.set(runId, { handle, system, cloneDir, unsubscribes })
@@ -204,6 +224,12 @@ export class WorkspaceRunManager {
         unsub()
       }
       await entry.system.stop()
+      const run = await this.deps.repo.findById(runId as WorkspaceRunId)
+      if (run) {
+        await this.deps.repo.update(
+          createWorkspaceRun({ ...run, status: "stopped", completedAt: new Date() }),
+        )
+      }
       await this.deps.isolator.cleanup(entry.handle)
       this.runs.delete(runId)
     }

@@ -27,7 +27,7 @@ export function AppSidebar() {
   const costUsd = useWorkspaceStore((s) => s.costUsd)
   const focusedGoalId = useFloorStore((s) => s.focusedGoalId)
   const focusGoal = useFloorStore((s) => s.focusGoal)
-  const activeTasks = useDashboardStore((s) => s.activeTasks)
+  const allTasks = useDashboardStore((s) => s.allTasks)
   const setActiveSection = useFloorStore((s) => s.setActiveSection)
 
   const workspaceBudget = run?.config.maxCostUsd ?? 100
@@ -97,7 +97,7 @@ export function AppSidebar() {
       <div className="px-4 pb-1.5">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Recents</span>
       </div>
-      <SidebarGoalList goals={sortedGoals} focusedGoalId={focusedGoalId} onGoalClick={focusGoal} activeTasks={activeTasks} />
+      <SidebarGoalList goals={sortedGoals} focusedGoalId={focusedGoalId} onGoalClick={focusGoal} allTasks={allTasks} />
 
       {/* User Section */}
       <div className="border-t border-border px-2 py-2">
@@ -139,11 +139,11 @@ function SidebarAction({ icon, label, badge, onClick }: {
   )
 }
 
-function SidebarGoalList({ goals, focusedGoalId, onGoalClick, activeTasks }: {
+function SidebarGoalList({ goals, focusedGoalId, onGoalClick, allTasks }: {
   goals: readonly GoalDTO[]
   focusedGoalId: string | null
   onGoalClick: (id: string) => void
-  activeTasks: readonly TaskDTO[]
+  allTasks: readonly TaskDTO[]
 }) {
   return (
     <div className="flex-1 overflow-y-auto px-2">
@@ -153,24 +153,24 @@ function SidebarGoalList({ goals, focusedGoalId, onGoalClick, activeTasks }: {
           goal={goal}
           isActive={goal.id === focusedGoalId}
           onClick={() => onGoalClick(goal.id)}
-          activeTasks={activeTasks}
+          allTasks={allTasks}
         />
       ))}
     </div>
   )
 }
 
-function SidebarGoalItem({ goal, isActive, onClick, activeTasks }: {
+function SidebarGoalItem({ goal, isActive, onClick, allTasks }: {
   goal: GoalDTO
   isActive: boolean
   onClick: () => void
-  activeTasks: readonly TaskDTO[]
+  allTasks: readonly TaskDTO[]
 }) {
   const color = getStatusColor(goal.status)
   const isCompleted = goal.status === "completed" || goal.status === "merged"
   const needsAttention = goal.status === "blocked" || goal.status === "failed"
   const isReview = goal.status === "review" || goal.status === "pending_review"
-  const tasks = getGoalTasks(activeTasks, goal.id)
+  const tasks = getGoalTasks(allTasks, goal.id)
   const { done, total } = computeTaskProgress(tasks, goal.taskCount)
 
   return (

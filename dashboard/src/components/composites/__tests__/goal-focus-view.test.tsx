@@ -17,7 +17,7 @@ describe("GoalFocusView", () => {
   beforeEach(() => {
     useDashboardStore.setState({
       goals: [makeGoal()],
-      activeTasks: [],
+      allTasks: [],
       agents: [],
     })
     useFloorStore.setState({ focusedGoalId: "g-1" })

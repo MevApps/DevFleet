@@ -55,7 +55,7 @@ export interface EventDTO {
 
 export interface LiveFloorDTO {
   readonly agents: AgentDTO[]
-  readonly activeTasks: TaskDTO[]
+  readonly allTasks: TaskDTO[]
   readonly recentEvents: EventDTO[]
 }
 

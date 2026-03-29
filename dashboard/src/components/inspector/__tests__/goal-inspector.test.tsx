@@ -15,7 +15,7 @@ describe("GoalInspector", () => {
   beforeEach(() => {
     useDashboardStore.setState({
       goals: [makeGoal()],
-      activeTasks: [],
+      allTasks: [],
       recentEvents: [],
     })
   })

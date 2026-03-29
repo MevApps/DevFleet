@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react"
 import { useDashboardStore } from "./store"
 import { useUIStore } from "./ui-store"
 import { useWorkspaceStore } from "./workspace-store"
-import { api } from "./api"
+import { SSE_URL, api } from "./api"
 import type { SSEEvent } from "./types"
 
 const DASHBOARD_REFRESH_TYPES = new Set([
@@ -28,7 +28,7 @@ export function useSSE() {
 
   useEffect(() => {
     useUIStore.getState().setConnectionState("reconnecting")
-    const source = new EventSource("/api/events/stream")
+    const source = new EventSource(SSE_URL)
     sourceRef.current = source
 
     source.onopen = () => {

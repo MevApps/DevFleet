@@ -4,7 +4,7 @@ import type { EventStore } from "../../use-cases/ports/EventStore"
 import type { LiveFloorDTO } from "./dto"
 import { toAgentDTO, toTaskDTO, toEventDTO } from "./mappers"
 
-const ACTIVE_STATUSES = new Set(["queued", "in_progress", "review"])
+const MAX_TASKS = 500
 
 export class LiveFloorPresenter {
   constructor(
@@ -19,10 +19,12 @@ export class LiveFloorPresenter {
       this.tasks.findAll(),
       this.events.findRecent(50),
     ])
-    const activeTasks = allTasks.filter(t => ACTIVE_STATUSES.has(t.status))
+    const capped = allTasks.length > MAX_TASKS
+      ? allTasks.slice(-MAX_TASKS)
+      : allTasks
     return {
       agents: agents.map(toAgentDTO),
-      activeTasks: activeTasks.map(toTaskDTO),
+      allTasks: capped.map(toTaskDTO),
       recentEvents: recentEvents.map(toEventDTO),
     }
   }

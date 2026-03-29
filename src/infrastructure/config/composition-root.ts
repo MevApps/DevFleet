@@ -354,6 +354,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     model: developerModel,
     bus,
     worktreeManager,
+    agentRegistry,
     workspaceDir: config.workspaceDir,
   })
 
@@ -455,6 +456,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     prCreator,
     autoMerge,
     buildSystem,
+    parentBus: bus,
     mockMode: useMock,
   })
 

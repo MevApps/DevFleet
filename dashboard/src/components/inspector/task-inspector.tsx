@@ -18,7 +18,7 @@ interface TaskInspectorProps {
 }
 
 export function TaskInspector({ entityId }: TaskInspectorProps) {
-  const task = useDashboardStore((s) => s.activeTasks.find((t) => t.id === entityId))
+  const task = useDashboardStore((s) => s.allTasks.find((t) => t.id === entityId))
   const recentEvents = useDashboardStore((s) => s.recentEvents)
   const [activeTab, setActiveTab] = useState<Tab>("diff")
 

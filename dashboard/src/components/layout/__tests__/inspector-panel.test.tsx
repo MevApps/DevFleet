@@ -47,7 +47,7 @@ describe("InspectorPanel", () => {
   it("renders goal inspector content for goal entity", () => {
     useDashboardStore.setState({
       goals: [{ id: "g-1", description: "Test goal", status: "active", createdAt: "2026-03-29T10:00:00Z", completedAt: null, taskCount: 2, totalBudget: { maxTokens: 100000, maxCostUsd: 10, remaining: 5 } }],
-      activeTasks: [],
+      allTasks: [],
       recentEvents: [],
     })
     useInspectorStore.getState().open("g-1", "goal", "Test goal")

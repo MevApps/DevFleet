@@ -21,7 +21,7 @@ describe("TableView", () => {
   beforeEach(() => {
     useDashboardStore.setState({
       goals: [makeGoal()],
-      activeTasks: [
+      allTasks: [
         makeTask({ id: "t-1", description: "Write OAuth handler" }),
         makeTask({ id: "t-2", description: "Write tests", status: "completed" }),
       ],
@@ -50,7 +50,7 @@ describe("TableView", () => {
   })
 
   it("shows empty state when no tasks", () => {
-    useDashboardStore.setState({ activeTasks: [] })
+    useDashboardStore.setState({ allTasks: [] })
     render(<TableView />)
     expect(screen.getByText(/no tasks/i)).toBeInTheDocument()
   })

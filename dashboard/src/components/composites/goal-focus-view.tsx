@@ -12,7 +12,7 @@ export function GoalFocusView() {
   const focusedGoalId = useFloorStore((s) => s.focusedGoalId)
   const unfocusGoal = useFloorStore((s) => s.unfocusGoal)
   const goals = useDashboardStore((s) => s.goals)
-  const activeTasks = useDashboardStore((s) => s.activeTasks)
+  const allTasks = useDashboardStore((s) => s.allTasks)
   const agents = useDashboardStore((s) => s.agents)
   const openInspector = useInspectorStore((s) => s.open)
 
@@ -21,7 +21,7 @@ export function GoalFocusView() {
     return <p className="text-sm text-text-muted p-4">Goal not found.</p>
   }
 
-  const tasks = getGoalTasks(activeTasks, goal.id)
+  const tasks = getGoalTasks(allTasks, goal.id)
   const segments = computePhaseSegments(tasks)
   const { done, total } = computeTaskProgress(tasks, goal.taskCount)
   const budgetUsed = goal.totalBudget.maxCostUsd - goal.totalBudget.remaining
