@@ -8,6 +8,15 @@ import { ViewModeToggle } from "./view-mode-toggle"
 import { EmptyState } from "@/components/primitives/empty-state"
 import { KanbanView } from "./kanban-view"
 import { TableView } from "./table-view"
+import { SecondaryViewWrapper } from "./secondary-view-wrapper"
+
+// Secondary view pages — direct imports (small components, no lazy overhead needed)
+import FinancialsPage from "@/app/financials/page"
+import QualityPage from "@/app/quality/page"
+import PerformancePage from "@/app/analytics/performance/page"
+import InsightsPage from "@/app/insights/page"
+import SystemPage from "@/app/system/page"
+import { WorkspaceSetupForm } from "./workspace-setup-form"
 
 export function ActiveFloor() {
   const viewMode = useFloorStore((s) => s.viewMode)
@@ -74,12 +83,35 @@ export function ActiveFloor() {
     )
   }
 
-  // Secondary sections — placeholder, Phase 5 will render existing pages here
-  return (
-    <div>
-      <p className="text-sm text-text-muted">
-        {activeSection} view will be implemented in Phase 5.
-      </p>
-    </div>
-  )
+  // Secondary views from sidebar feature links
+  if (activeSection === "analytics") {
+    return (
+      <SecondaryViewWrapper title="Analytics">
+        <div className="space-y-6">
+          <FinancialsPage />
+          <QualityPage />
+          <PerformancePage />
+          <InsightsPage />
+        </div>
+      </SecondaryViewWrapper>
+    )
+  }
+
+  if (activeSection === "health") {
+    return (
+      <SecondaryViewWrapper title="System Health">
+        <SystemPage />
+      </SecondaryViewWrapper>
+    )
+  }
+
+  if (activeSection === "settings") {
+    return (
+      <SecondaryViewWrapper title="Workspace Settings">
+        <WorkspaceSetupForm />
+      </SecondaryViewWrapper>
+    )
+  }
+
+  return null
 }
