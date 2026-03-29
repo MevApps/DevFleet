@@ -23,7 +23,7 @@ export function StatusBadge({ status, variant = "pill", className }: StatusBadge
   }
 
   return (
-    <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border", classes.surface, classes.border, classes.fg, className)}>
+    <span className={cn("inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium border", classes.surface, classes.border, classes.fg, className)}>
       {label}
     </span>
   )

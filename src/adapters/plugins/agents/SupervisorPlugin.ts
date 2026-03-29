@@ -183,6 +183,14 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
     const task = await this.deps.taskRepo.findById(taskId)
     if (!task) return
 
+    // Mark task as done — transition through allowed states
+    if (task.status === "in_progress") {
+      const reviewed = { ...task, status: "review" as const, version: task.version + 1 }
+      await this.deps.taskRepo.update(reviewed)
+      const approved = { ...reviewed, status: "approved" as const, version: reviewed.version + 1 }
+      await this.deps.taskRepo.update(approved)
+    }
+
     // Release the agent back to idle so it can be re-assigned
     if (task.assignedTo) {
       try {

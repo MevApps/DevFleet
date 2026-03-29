@@ -41,7 +41,7 @@ function mockSystem(bus?: MessagePort): DevFleetSystem {
   const theBus = bus ?? mockBus()
   return {
     taskRepo: {} as any,
-    goalRepo: {} as any,
+    goalRepo: { findById: jest.fn().mockResolvedValue({ description: "Test goal" }), findAll: jest.fn().mockResolvedValue([]), create: jest.fn() } as any,
     agentRegistry: {} as any,
     eventStore: {} as any,
     metricRecorder: {} as any,

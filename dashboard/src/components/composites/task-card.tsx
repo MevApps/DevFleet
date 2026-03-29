@@ -16,14 +16,12 @@ export function TaskCard({ task }: { task: TaskDTO }) {
         <div className="flex items-center gap-2">
           <EntityIcon entity="task" size="md" />
           <div>
-            <div className="text-base font-medium text-text-primary">Task #{task.id.slice(0, 6)}</div>
-            <div className="text-xs text-text-secondary">Goal: {task.goalId.slice(0, 8)}</div>
+            <div className="text-sm font-medium text-text-primary leading-snug">{task.description.split("\n")[0].slice(0, 60)}{task.description.length > 60 ? "..." : ""}</div>
+            <div className="text-xs text-text-muted">{task.phase} &middot; #{task.id.slice(0, 6)}</div>
           </div>
         </div>
         <StatusBadge status={task.status} />
       </div>
-
-      <p className="text-sm mb-2 text-text-secondary">{task.description}</p>
 
       <div className="flex gap-3 text-xs mb-2 text-text-secondary">
         <span>Phase: <span className="text-status-purple-fg">{task.phase}</span></span>
