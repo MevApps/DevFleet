@@ -1,3 +1,4 @@
+// src/app/layout-shell.tsx
 "use client"
 import { useEffect } from "react"
 import { AppSidebar } from "@/components/layout/app-sidebar"
@@ -7,11 +8,17 @@ import { WorkspaceGate } from "@/components/composites/workspace-gate"
 import { useSSE } from "@/lib/useSSE"
 import { useUIStore } from "@/lib/ui-store"
 import { useWorkspaceStore } from "@/lib/workspace-store"
+import { useDashboardStore } from "@/lib/store"
 import { api } from "@/lib/api"
 
 export function LayoutShell({ children }: { children: React.ReactNode }) {
   useSSE()
   const theme = useUIStore((s) => s.theme)
+  const fetchLiveFloor = useDashboardStore((s) => s.fetchLiveFloor)
+  const fetchPipeline = useDashboardStore((s) => s.fetchPipeline)
+  const fetchMetrics = useDashboardStore((s) => s.fetchMetrics)
+  const fetchAlerts = useDashboardStore((s) => s.fetchAlerts)
+  const wsRun = useWorkspaceStore((s) => s.run)
 
   useEffect(() => {
     document.documentElement.classList.remove("dark", "light")
@@ -29,6 +36,16 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
       .then(useWorkspaceStore.getState().setStatus)
       .catch(() => useWorkspaceStore.getState().clear())
   }, [])
+
+  // Consolidated data fetch when workspace is active
+  useEffect(() => {
+    if (wsRun?.status === "active") {
+      fetchLiveFloor()
+      fetchPipeline()
+      fetchMetrics()
+      fetchAlerts()
+    }
+  }, [wsRun?.status, fetchLiveFloor, fetchPipeline, fetchMetrics, fetchAlerts])
 
   return (
     <div className="flex h-screen overflow-hidden">

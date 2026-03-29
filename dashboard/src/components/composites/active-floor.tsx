@@ -6,7 +6,6 @@ import { GoalRow } from "./goal-row"
 import { GoalFocusView } from "./goal-focus-view"
 import { ViewModeToggle } from "./view-mode-toggle"
 import { EmptyState } from "@/components/primitives/empty-state"
-import { Target } from "lucide-react"
 
 export function ActiveFloor() {
   const viewMode = useFloorStore((s) => s.viewMode)
@@ -36,7 +35,7 @@ export function ActiveFloor() {
 
         {sortedGoals.length === 0 ? (
           <EmptyState
-            icon={Target}
+            icon="Target"
             title="No goals yet"
             description="Create a goal from the sidebar to get started."
           />
