@@ -26,9 +26,9 @@ Replace the multi-page architecture with a **three-pane Unified Command layout**
 
 Build the three-pane shell as the new root layout. Migrate content piece by piece, keeping old pages as fallbacks until fully absorbed. Six phases:
 
-1. **Shell** — Three-pane layout, workspace gate, routing, new stores (`useFloorStore`, `useInspectorStore`), data fetching consolidation
-2. **Floor + Stream** — Goal rows with shatter view, replacing Goals + Tasks + Live Floor
-3. **Inspector** — Slide-in/pinnable shell + four type-specific inspectors, replacing entity pages
+1. **Shell** — Three-pane layout (sidebar, top bar, floor, inspector), workspace gate, routing, new stores (`useFloorStore`, `useInspectorStore`), data fetching consolidation
+2. **Floor + Stream + Goal Focus** — Stream view with goal rows, Goal Focus View (stat cards + phase lanes), replacing Goals + Tasks + Live Floor. Sidebar recents list wired to goal navigation.
+3. **Inspector** — Slide-in/pinnable shell + four type-specific inspectors, replacing entity pages. Includes new backend endpoint `GET /api/tasks/{id}/diff`.
 4a. **Kanban** — Flat kanban with goal filter chips, replacing Pipeline
 4b. **Table** — Dense table with bulk actions and virtualization (can ship independently after 4a)
 5. **Secondary Views** — Analytics/system pages in "More" section (temporary shim — these need a future redesign pass)
@@ -43,17 +43,38 @@ Build the three-pane shell as the new root layout. Migrate content piece by piec
 
 | Pane | Width | Content |
 |------|-------|---------|
-| **Pane 1: Fleet Navigator** | 220px fixed | Live triage counts, agent pool, budget gauge, saved filters, collapsible "More" section |
-| **Pane 2: Active Floor** | Fluid (remaining) | Stream / Kanban / Table views. Workspace setup/boot when no workspace active |
-| **Pane 3: Inspector** | 400px, collapsed by default | Slides in on entity click. Pin button to keep open. Auto-closes when unpinned and user clicks empty floor |
+| **Pane 1: Sidebar** | 260px, collapsible | Logo + collapse button, `+ New Goal`, search, feature links (Settings, Analytics, Health), "Recents" goal list, user section at bottom |
+| **Pane 2: Active Floor** | Fluid (remaining) | Stream / Kanban / Table views, Goal Focus view, workspace setup/boot |
+| **Pane 3: Inspector** | 380px, collapsed by default | Slides in on entity click. Pin button to keep open. Auto-closes when unpinned and user clicks empty floor |
+
+### Sidebar (Pane 1) — Chat-App Style
+
+Follows the Claude/ChatGPT sidebar pattern. Top-to-bottom layout:
+
+1. **Header row:** DevFleet logo (icon + text) on the left, collapse/expand double-chevron button on the right. Clicking collapse hides the sidebar (width animates to 0). An expand button appears in the top bar to reopen.
+2. **`+ New Goal` button:** Full-width, prominent. Keyboard shortcut `Cmd+N`.
+3. **Search bar:** "Search goals..." with icon. Searches across all goals by title.
+4. **Feature links:** Icon + label rows for secondary views:
+   - Settings — workspace configuration
+   - Analytics — Financials, Quality, Performance, Insights (renders in Pane 2)
+   - Health — system health dashboard (renders in Pane 2)
+   - Analytics shows a badge when new insights are available (e.g., "3 insights")
+5. **Divider**
+6. **"Recents" section:** Label + scrollable list of goals sorted by last activity. Each goal row shows: status dot (color-coded), title (truncated), mini phase progress bar, task count fraction, relative time. Completed goals fade to 50% opacity. Goals needing attention show a `!` badge. Goals in review show an `R` badge.
+7. **User section** (bottom, above border): Avatar, username, budget display (`$42.10 / $100.00`). Click opens a popup menu: Profile, API Keys, Billing, divider, Stop Workspace (danger).
+
+**Clicking a goal** in the sidebar navigates to the **Goal Focus View** in Pane 2 (see Section 2).
 
 ### Top Bar (48px)
 
-Logo, `Cmd+K` command palette, workspace status badge, alert bell with notification dot, user avatar.
+No logo (lives in sidebar), no search (lives in sidebar). Contains:
+- **Expand sidebar button** (only visible when sidebar is collapsed)
+- **Fleet summary chips:** compact pill badges showing `4/7 agents`, `3 need attention` (amber), `$42.10 spent`
+- **Right side:** Workspace status badge ("Workspace Active" green), alert bell with notification dot
 
-### Status Bar (32px)
+### No Status Bar
 
-SSE connection indicator, active/blocked goal counts, agent count, session spend, last event timestamp. Monospace font.
+Removed. Fleet summary is in the top bar chips. SSE connection state is indicated by the alert bell color (green = connected, red pulse = disconnected).
 
 ### Routing
 
@@ -61,13 +82,13 @@ Single root route `/`. State is split between URL (shareable) and ephemeral (ses
 
 **URL state** (query params — bookmarkable, shareable):
 - `?view=kanban` / `?view=table` (default is stream)
-- `?goal=50` (filter to specific goal)
-- `?section=financials` (secondary view from "More")
+- `?goal=50` (navigates to Goal Focus View)
+- `?section=analytics` (secondary view from sidebar features)
 
 **Ephemeral state** (Zustand only — not in URL):
 - Inspector open/closed, pinned state, selected entity
-- Goal row expansion state
-- Saved filter selection
+- Sidebar collapsed state
+- Goal row expansion state (stream view)
 
 Rationale: Inspector state is transient navigation context, not a destination. A shared URL like `?inspect=task-312` would break if the task is discarded or the recipient lacks access. View mode and goal filter are stable destinations worth bookmarking.
 
@@ -115,11 +136,24 @@ Spreadsheet rows with sortable columns: Goal, Task, Phase, Status, Agent, Budget
 
 **Virtualization:** Required for 100+ goals. Use `@tanstack/react-virtual` (already compatible with the stack). Render only visible rows + 20-row overscan buffer.
 
+### Goal Focus View — Single goal deep-dive
+
+Activated when user clicks a goal in the sidebar (or navigates to `?goal=50`). Replaces the stream/kanban/table in Pane 2 with a dedicated goal page:
+
+1. **Back button** (top-left chevron) — returns to the previous floor view (stream/kanban/table), preserving the view mode.
+2. **Goal header** — Goal ID, status badge, full title, metadata row (created time, budget spent/total, task count), large phase progress bar (8px, color-coded segments).
+3. **Stat cards** — Four compact cards in a row: Tasks (completed/total + in-progress count), Agents (count + names), Budget (spent + percentage), Duration (elapsed + avg per task).
+4. **Phase lanes** — "Tasks by Phase" label, then horizontal phase columns (Planning → Implementation → Review → Done) with task cards. Arrow connectors between columns. This is the "shatter view" at full width, not constrained inside a goal row.
+
+Clicking a task card in the phase lanes opens the Inspector (Pane 3) with that task's detail.
+
+`viewMode` is preserved when entering Goal Focus View. Returning via the back button restores the previous view (stream/kanban/table).
+
 ### Floor Header
 
-`[Floor Title] [Stream | Kanban | Table] .................. [+ New Goal]`
+`[Floor Title] [Stream | Kanban | Table]`
 
-`+ New Goal` opens an inline form at the top of the stream (not a modal). After submission, the new goal row appears with "Decomposing..." shimmer while the supervisor agent shatters it into tasks via SSE events.
+`+ New Goal` button lives in the sidebar, not the floor header. After goal creation, the new goal appears in the sidebar's Recents list and the floor navigates to its Goal Focus View showing the "Decomposing..." state with tasks materializing in real-time via SSE events.
 
 ### Failure Modes
 
@@ -184,49 +218,27 @@ Buttons adapt to task status:
 
 ---
 
-## Section 4: Fleet Navigator (Pane 1)
+## Section 4: Sidebar (Pane 1)
 
-A live data dashboard, not a nav menu. Filters and summarizes fleet state.
+A chat-app-style sidebar for goal navigation and feature access. Not a data dashboard — live fleet stats are in the top bar chips.
 
-### Triage Section
+### Sidebar Structure
 
-Four filterable rows controlling the Stream view:
+Detailed in Section 1. Key behaviors:
 
-| Row | Dot Color | Meaning |
-|-----|-----------|---------|
-| Active | Blue | Goals currently being worked on |
-| Needs Attention | Amber | Goals with blocked/failed tasks |
-| In Review | Purple | Goals with tasks awaiting review |
-| Completed Today | Green | Goals finished in current session |
+- **Collapsible:** Double-chevron button in sidebar header collapses to 0 width (200ms ease). Expand button appears in top bar. Collapse state stored in `useUIStore.sidebarCollapsed`.
+- **Goal list ("Recents"):** Sorted by last activity, newest on top. Shows all goals from the current workspace session. Completed goals fade to 50% opacity but remain in the list. Goals with errors show amber `!` badge. Goals in review show purple `R` badge.
+- **Goal click:** Navigates to the Goal Focus View in Pane 2. URL updates to `?goal={id}`. Sidebar highlights the active goal with purple background.
+- **Feature links:** Settings, Analytics, Health. Clicking renders the respective page in Pane 2 (replacing current floor content). Back button or goal click returns to the floor.
 
-Clicking a row filters the Stream. Active filter highlighted with purple background. Click again to deselect (show all).
+### Secondary Views (Settings, Analytics, Health)
 
-### Agent Pool
+The sidebar feature links replace the old "More" collapsible section. They render existing page components in Pane 2:
+- **Settings** — Workspace configuration (reuses `WorkspaceSetupForm` internals)
+- **Analytics** — Financials, Quality, Performance, Insights (tabbed view reusing existing page components)
+- **Health** — System health dashboard (reuses existing Health page)
 
-Three rows: Busy (green), Idle (gray), Blocked (red) with counts. Clicking a row opens a popover listing agents in that state. Clicking an agent opens it in the Inspector.
-
-### Budget Gauge
-
-Compact card: "Session Spend" label, large dollar amount, thin progress bar (spend vs. session budget). Click opens budget breakdown in Inspector.
-
-### Saved Filters
-
-**Deferred to Phase 5 or later.** Not required for the core three-pane migration. The triage section (Active, Needs Attention, In Review, Completed Today) covers the critical filtering needs. Saved filters add value at scale (50+ goals) but introduce scope: filter model, persistence (localStorage vs. backend), filter builder UI, composition logic. Spec these when the core layout is proven.
-
-Until then, Pane 1 shows only the four triage rows and the goal filter chips in Kanban view.
-
-### "More" Section (Collapsible)
-
-Collapsed group at bottom containing links to secondary views:
-- Financials
-- Quality
-- Performance
-- Health
-- Insights
-
-Clicking renders that page's content in Pane 2 (replacing stream/kanban/table). Back button or triage filter click returns to main floor. These pages reuse existing components — no redesign needed during migration.
-
-**Note:** This is a **temporary shim** for Phase 5. These views are parked here to unblock the old page removal, but they deserve their own redesign pass to integrate into the Unified Command model (e.g., budget gauge click -> inline financials in Inspector, agent click -> inline performance metrics). A future phase should evaluate which analytics belong inline (embedded in Inspector/Floor) vs. which need their own full-floor view.
+**Note:** This is a **temporary shim** for Phase 5. These views are parked in the sidebar to unblock old page removal, but they deserve a future redesign pass to integrate into the Unified Command model (e.g., budget chip click → inline financials, agent click → inline performance).
 
 ---
 
@@ -308,8 +320,9 @@ Workspace is a prerequisite for all fleet operations. The UI reflects this.
 
 ## Components to Build (New)
 
-- `ThreePaneLayout` — Root layout shell (flexbox container for three panes + top/status bars)
-- `FleetNavigator` — Pane 1 with triage, agents, budget, "More"
+- `ThreePaneLayout` — Root layout shell (flexbox container for sidebar + top bar + floor + inspector)
+- `AppSidebar` — Pane 1: logo/collapse, new goal, search, feature links, recents goal list, user section with popup menu
+- `GoalFocusView` — Full-floor single-goal detail: header, stat cards, phase lanes
 - `ActiveFloor` — Pane 2 container managing view mode state
 - `GoalRow` — Collapsible stream row with phase bar; delegates expanded content to `PhaseLanes`
 - `PhaseLanes` — Horizontal phase layout within expanded goal row
@@ -348,7 +361,7 @@ Each entry specifies the reuse strategy: **extend** (add props, backward compati
 
 ## Components to Remove (After Migration)
 
-- `Sidebar` — Replaced by FleetNavigator
+- `Sidebar` — Replaced by AppSidebar
 - `WorkspaceRequiredNotice` — Absorbed into WorkspaceGate
 - `WorkspaceGoalLog` — Absorbed into FleetNavigator budget/goal summary
 - Page-level layouts for all 11 routes — Replaced by single ThreePaneLayout
@@ -370,10 +383,12 @@ No UI state added here. This store is the **data layer**.
 ### `useFloorStore` (new — Active Floor UI state)
 
 - `viewMode`: `'stream' | 'kanban' | 'table'`
-- `activeTriageFilter`: `'active' | 'attention' | 'review' | 'completed' | null`
+- `focusedGoalId`: `GoalId | null` (when set, Pane 2 shows Goal Focus View)
 - `kanbanGoalFilter`: `GoalId | null`
 - `expandedGoalIds`: `Set<GoalId>` (which goal rows are expanded in stream)
-- `activeSection`: `'floor' | 'financials' | 'quality' | 'performance' | 'health' | 'insights'` (what Pane 2 is showing)
+- `activeSection`: `'floor' | 'settings' | 'analytics' | 'health'` (what Pane 2 is showing)
+
+`viewMode` is preserved when navigating to a secondary section or Goal Focus View. Returning to the floor restores the previous `viewMode`. When `activeSection` is not `'floor'`, `viewMode` is silently preserved but not applied — the secondary view renders in its place.
 
 ### `useInspectorStore` (new — Inspector UI state)
 
@@ -426,3 +441,6 @@ Interactive HTML prototypes created during design:
 - `ux-redesign.html` — Full three-pane layout with both Concept A (Modern Laboratory) and Concept B (Tactical HUD)
 - `ux-kanban-options.html` — Three kanban grouping options (swimlanes, dividers, flat+filter)
 - `ux-workspace-options.html` — Three workspace setup placement options (full-floor, inspector, modal)
+- `ux-sidebar-options.html` — Three sidebar options (data dashboard, chat-app, hybrid)
+- `ux-sidebar-v2.html` — Refined sidebar with search, features above recents, no stat cards/tabs
+- `ux-goal-focus.html` — Goal Focus View: sidebar + goal detail with phase lanes + inspector
