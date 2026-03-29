@@ -1,16 +1,66 @@
+// src/components/composites/task-card.tsx
 import type { TaskDTO } from "@/lib/types"
 import { EntityIcon } from "@/components/primitives/entity-icon"
 import { StatusBadge } from "@/components/primitives/status-badge"
 import { ProgressBar } from "@/components/primitives/progress-bar"
 import { formatTokens } from "@/lib/utils/format"
+import { cn } from "@/lib/utils"
 
-export function TaskCard({ task }: { task: TaskDTO }) {
+interface TaskCardProps {
+  task: TaskDTO
+  compact?: boolean
+  goalTag?: { label: string; color: string }
+  onClick?: () => void
+}
+
+export function TaskCard({ task, compact, goalTag, onClick }: TaskCardProps) {
   const budgetRatio = task.budget.maxTokens > 0 ? task.tokensUsed / task.budget.maxTokens : 0
+
+  if (compact) {
+    return (
+      <button
+        onClick={onClick}
+        className={cn(
+          "w-full text-left rounded-lg border border-border p-2.5 bg-bg-card transition-colors mb-2",
+          onClick && "hover:border-border-hover cursor-pointer",
+        )}
+      >
+        <p className="text-[13px] font-medium text-text-primary leading-snug">
+          {task.description.split("\n")[0].slice(0, 50)}{task.description.length > 50 ? "..." : ""}
+        </p>
+        <div className="flex items-center gap-1.5 mt-1 text-[11px] text-text-muted">
+          {task.assignedTo && (
+            <span className="px-1.5 py-0.5 rounded bg-status-blue-surface text-status-blue-fg font-mono text-[10px]">
+              {task.assignedTo}
+            </span>
+          )}
+          {!task.assignedTo && <span>queued</span>}
+          {goalTag && (
+            <span
+              className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+              style={{ backgroundColor: `${goalTag.color}15`, color: goalTag.color }}
+            >
+              {goalTag.label}
+            </span>
+          )}
+        </div>
+        {task.status === "in_progress" && budgetRatio > 0 && (
+          <div className="h-[3px] rounded-full bg-border mt-1.5 overflow-hidden">
+            <div className="h-full rounded-full bg-status-blue-fg" style={{ width: `${Math.min(budgetRatio * 100, 100)}%` }} />
+          </div>
+        )}
+      </button>
+    )
+  }
 
   return (
     <div
-      className="rounded-lg border border-border p-4 bg-card"
+      className={cn(
+        "rounded-lg border border-border p-4 bg-card",
+        onClick && "cursor-pointer hover:border-border-hover",
+      )}
       style={{ borderLeftWidth: "3px", borderLeftColor: "hsl(125, 70%, 40%)" }}
+      onClick={onClick}
     >
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-2">
