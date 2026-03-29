@@ -68,9 +68,17 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
   }
 
   async handle(message: Message): Promise<void> {
+    console.log("[SupervisorPlugin] handle called with:", message.type)
     switch (message.type) {
       case "goal.created":
-        return this.handleGoalCreated(message.goalId, message.description)
+        console.log("[SupervisorPlugin] handling goal.created:", message.goalId)
+        // Fire-and-forget: the pipeline runs in the background.
+        // Without this, bus.emit() blocks until the entire pipeline completes,
+        // which freezes the HTTP response for minutes.
+        void this.handleGoalCreated(message.goalId, message.description).catch(err =>
+          console.error("[SupervisorPlugin] handleGoalCreated failed:", err)
+        )
+        return
       case "task.completed":
         return this.handleTaskCompleted(message.taskId)
       case "code.completed":
@@ -89,8 +97,10 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
   }
 
   private async handleGoalCreated(goalId: GoalId, description: string): Promise<void> {
+    console.log("[SupervisorPlugin] handleGoalCreated START, goalId:", goalId)
     // Detect project configuration
     const config = await this.deps.detectProjectConfig.execute()
+    console.log("[SupervisorPlugin] project config detected")
     await this.deps.bus.emit({
       id: createMessageId(),
       type: "project.detected",
@@ -110,13 +120,32 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
 
     let content = ""
     const controller = new AbortController()
-    for await (const event of this.deps.agentSession.launch(phaseTask, controller.signal)) {
-      if (event.type === "completed") {
-        content = event.result
+    console.log("[SupervisorPlugin] launching agentSession...")
+    try {
+      for await (const event of this.deps.agentSession.launch(phaseTask, controller.signal)) {
+        console.log("[SupervisorPlugin] session event:", event.type)
+        if (event.type === "completed") {
+          content = event.result
+          console.log("[SupervisorPlugin] got completed, content length:", content.length)
+        } else if (event.type === "error") {
+          console.error("[SupervisorPlugin] session error:", event.reason)
+        }
       }
+      console.log("[SupervisorPlugin] session stream ended, content length:", content.length)
+    } catch (err) {
+      console.error("[SupervisorPlugin] session launch THREW:", err instanceof Error ? err.message : err)
     }
 
-    if (!content) return
+    if (!content) {
+      console.log("[SupervisorPlugin] no content, using fallback")
+      // Fallback: create one task per pipeline phase
+      content = JSON.stringify(
+        this.deps.pipelineConfig.phases.map(phase => ({
+          description: `${phase}: ${description}`,
+          phase,
+        }))
+      )
+    }
 
     // Parse AI response into task definitions
     let taskDefs: Array<{ description: string; phase: string }>
@@ -137,6 +166,7 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
       budget: createBudget({ maxTokens: 10000, maxCostUsd: 1.0 }),
     }))
 
+    console.log("[SupervisorPlugin] decomposed into", definitions.length, "tasks:", definitions.map(d => d.phase))
     await this.deps.decomposeGoal.execute(goalId, definitions)
 
     // Assign the first phase task
@@ -162,14 +192,13 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
       }
     }
 
-    // Find next queued task in pipeline order (tasks were all created during decomposition)
+    // Find next queued task in pipeline order (supports multiple tasks per phase)
     const allTasks = await this.deps.taskRepo.findByGoalId(task.goalId)
     const phases = this.deps.pipelineConfig.phases
-    const currentIdx = phases.indexOf(task.phase)
-
-    const nextTask = allTasks.find(t =>
-      t.status === "queued" && phases.indexOf(t.phase) > currentIdx
-    )
+    const queued = allTasks
+      .filter(t => t.status === "queued")
+      .sort((a, b) => phases.indexOf(a.phase) - phases.indexOf(b.phase))
+    const nextTask = queued[0] ?? null
 
     if (nextTask) {
       const role = roleForPhase(nextTask.phase, this.deps.pipelineConfig)
@@ -212,10 +241,16 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
       const codeTask = allTasks.find(t => t.phase === "code" && t.branch)
 
       if (codeTask) {
-        await this.deps.mergeBranch.execute(codeTask.id)
+        try {
+          await this.deps.mergeBranch.execute(codeTask.id)
+          console.log("[SupervisorPlugin] branch merged for task:", codeTask.id)
+        } catch (err) {
+          console.error("[SupervisorPlugin] mergeBranch failed:", err instanceof Error ? err.message : err)
+        }
       }
 
       // After merge, advance the pipeline from the reviewed task
+      console.log("[SupervisorPlugin] advancing pipeline after review.approved for:", taskId)
       await this.handleTaskCompleted(taskId)
     }
   }

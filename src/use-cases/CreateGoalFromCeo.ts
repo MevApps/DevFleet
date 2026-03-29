@@ -31,6 +31,8 @@ export class CreateGoalFromCeo {
     })
 
     await this.goals.create(goal)
+    console.log("[CreateGoalFromCeo] goal created in repo:", goal.id)
+    console.log("[CreateGoalFromCeo] emitting goal.created on bus...")
     await this.bus.emit({
       id: createMessageId(),
       type: "goal.created",
@@ -38,6 +40,7 @@ export class CreateGoalFromCeo {
       description: goal.description,
       timestamp: new Date(),
     })
+    console.log("[CreateGoalFromCeo] bus.emit returned")
 
     return success(goal)
   }
