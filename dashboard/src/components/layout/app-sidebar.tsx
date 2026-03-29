@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils"
 import { formatCurrency } from "@/lib/utils/format"
 import { getStatusColor } from "@/lib/registry/statuses"
 import type { GoalDTO } from "@/lib/types"
+import { getGoalTasks, computeTaskProgress } from "@/lib/hooks/use-goal-tasks"
+import type { TaskDTO } from "@/lib/types"
 import {
   ChevronsLeft,
   Plus,
@@ -25,6 +27,7 @@ export function AppSidebar() {
   const costUsd = useWorkspaceStore((s) => s.costUsd)
   const focusedGoalId = useFloorStore((s) => s.focusedGoalId)
   const focusGoal = useFloorStore((s) => s.focusGoal)
+  const activeTasks = useDashboardStore((s) => s.activeTasks)
   const setActiveSection = useFloorStore((s) => s.setActiveSection)
 
   const workspaceBudget = run?.config.maxCostUsd ?? 100
@@ -87,7 +90,7 @@ export function AppSidebar() {
       <div className="px-4 pb-1.5">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Recents</span>
       </div>
-      <SidebarGoalList goals={sortedGoals} focusedGoalId={focusedGoalId} onGoalClick={focusGoal} />
+      <SidebarGoalList goals={sortedGoals} focusedGoalId={focusedGoalId} onGoalClick={focusGoal} activeTasks={activeTasks} />
 
       {/* User Section */}
       <div className="border-t border-border px-2 py-2">
@@ -129,10 +132,11 @@ function SidebarAction({ icon, label, badge, onClick }: {
   )
 }
 
-function SidebarGoalList({ goals, focusedGoalId, onGoalClick }: {
+function SidebarGoalList({ goals, focusedGoalId, onGoalClick, activeTasks }: {
   goals: readonly GoalDTO[]
   focusedGoalId: string | null
   onGoalClick: (id: string) => void
+  activeTasks: readonly TaskDTO[]
 }) {
   return (
     <div className="flex-1 overflow-y-auto px-2">
@@ -142,22 +146,25 @@ function SidebarGoalList({ goals, focusedGoalId, onGoalClick }: {
           goal={goal}
           isActive={goal.id === focusedGoalId}
           onClick={() => onGoalClick(goal.id)}
+          activeTasks={activeTasks}
         />
       ))}
     </div>
   )
 }
 
-function SidebarGoalItem({ goal, isActive, onClick }: {
+function SidebarGoalItem({ goal, isActive, onClick, activeTasks }: {
   goal: GoalDTO
   isActive: boolean
   onClick: () => void
+  activeTasks: readonly TaskDTO[]
 }) {
   const color = getStatusColor(goal.status)
   const isCompleted = goal.status === "completed" || goal.status === "merged"
   const needsAttention = goal.status === "blocked" || goal.status === "failed"
   const isReview = goal.status === "review" || goal.status === "pending_review"
-  const tasksDone = 0 // Phase 2 will compute this from tasks
+  const tasks = getGoalTasks(activeTasks, goal.id)
+  const { done, total } = computeTaskProgress(tasks, goal.taskCount)
 
   return (
     <button
@@ -184,13 +191,13 @@ function SidebarGoalItem({ goal, isActive, onClick }: {
             <div
               className="h-full rounded-full"
               style={{
-                width: goal.taskCount > 0 ? `${(tasksDone / goal.taskCount) * 100}%` : "0%",
+                width: total > 0 ? `${(done / total) * 100}%` : "0%",
                 backgroundColor: `var(--status-${color}-fg)`,
               }}
             />
           </div>
           <span className="text-[10px] font-mono text-text-muted">
-            {tasksDone}/{goal.taskCount}
+            {done}/{total}
           </span>
         </div>
       </div>
