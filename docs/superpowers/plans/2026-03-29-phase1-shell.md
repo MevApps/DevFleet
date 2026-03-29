@@ -37,7 +37,7 @@
 | `src/lib/ui-store.ts` | No changes needed — already has `sidebarCollapsed` and `toggleSidebar` |
 | `src/components/layout/top-bar.tsx` | Replace search + title with fleet chips, expand sidebar button, alert bell, workspace badge |
 | `src/app/layout-shell.tsx` | Replace Sidebar with AppSidebar, add InspectorPanel, wrap floor in container |
-| `src/app/globals.css` | Add `--inspector-width` token |
+| `src/lib/theme/tokens.css` | Add `--inspector-width` token (same file as sidebar width update) |
 
 ### Unchanged Files (used as-is)
 | File | Used By |
@@ -265,10 +265,10 @@ describe("useInspectorStore", () => {
     expect(state.breadcrumbs).toHaveLength(1)
   })
 
-  it("isOpen returns true when entity is selected", () => {
-    expect(useInspectorStore.getState().isOpen).toBe(false)
+  it("selectedEntityId is null when closed, set when open", () => {
+    expect(useInspectorStore.getState().selectedEntityId).toBeNull()
     useInspectorStore.getState().open("task-1", "task", "Write handler")
-    expect(useInspectorStore.getState().isOpen).toBe(true)
+    expect(useInspectorStore.getState().selectedEntityId).toBe("task-1")
   })
 })
 ```
@@ -297,21 +297,17 @@ interface InspectorState {
   selectedEntityType: EntityType | null
   pinned: boolean
   breadcrumbs: readonly Breadcrumb[]
-  isOpen: boolean
   open: (id: string, type: EntityType, label: string) => void
   close: () => void
   togglePin: () => void
   navigateBreadcrumb: (index: number) => void
 }
 
-export const useInspectorStore = create<InspectorState>((set, get) => ({
+export const useInspectorStore = create<InspectorState>((set) => ({
   selectedEntityId: null,
   selectedEntityType: null,
   pinned: false,
   breadcrumbs: [],
-  get isOpen() {
-    return get().selectedEntityId !== null
-  },
   open: (id, type, label) =>
     set((state) => ({
       selectedEntityId: id,
@@ -471,6 +467,7 @@ import { useDashboardStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 import { formatCurrency } from "@/lib/utils/format"
 import { getStatusColor } from "@/lib/registry/statuses"
+import type { GoalDTO } from "@/lib/types"
 import {
   ChevronsLeft,
   Plus,
@@ -550,60 +547,7 @@ export function AppSidebar() {
       <div className="px-4 pb-1.5">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Recents</span>
       </div>
-      <div className="flex-1 overflow-y-auto px-2">
-        {sortedGoals.map((goal) => {
-          const isActive = goal.id === focusedGoalId
-          const color = getStatusColor(goal.status)
-          const isCompleted = goal.status === "completed" || goal.status === "merged"
-          const needsAttention = goal.status === "blocked" || goal.status === "failed"
-          const isReview = goal.status === "review" || goal.status === "pending_review"
-          const tasksDone = 0 // Phase 2 will compute this from tasks
-          return (
-            <button
-              key={goal.id}
-              onClick={() => focusGoal(goal.id)}
-              className={cn(
-                "flex items-center gap-2 w-full px-2.5 py-2 rounded-lg text-left transition-colors mb-px",
-                isActive ? "bg-status-purple-surface" : "hover:bg-bg-hover",
-                isCompleted && "opacity-50",
-              )}
-            >
-              <span
-                className="w-2 h-2 rounded-full shrink-0"
-                style={{ backgroundColor: `var(--status-${color}-fg)` }}
-              />
-              <div className="flex-1 min-w-0">
-                <p className={cn(
-                  "text-[13px] truncate",
-                  isActive ? "font-semibold text-status-purple-fg" : "font-medium text-text-primary",
-                )}>
-                  {goal.description}
-                </p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <div className="w-10 h-[3px] rounded-full bg-border overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: goal.taskCount > 0 ? `${(tasksDone / goal.taskCount) * 100}%` : "0%",
-                        backgroundColor: `var(--status-${color}-fg)`,
-                      }}
-                    />
-                  </div>
-                  <span className="text-[10px] font-mono text-text-muted">
-                    {tasksDone}/{goal.taskCount}
-                  </span>
-                </div>
-              </div>
-              {needsAttention && (
-                <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-status-yellow-surface text-status-yellow-fg shrink-0">!</span>
-              )}
-              {isReview && (
-                <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-status-purple-surface text-status-purple-fg shrink-0">R</span>
-              )}
-            </button>
-          )
-        })}
-      </div>
+      <SidebarGoalList goals={sortedGoals} focusedGoalId={focusedGoalId} onGoalClick={focusGoal} />
 
       {/* User Section */}
       <div className="border-t border-border px-2 py-2">
@@ -640,6 +584,81 @@ function SidebarAction({ icon, label, badge, onClick }: {
         <span className="ml-auto text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-status-purple-surface text-status-purple-fg">
           {badge}
         </span>
+      )}
+    </button>
+  )
+}
+
+function SidebarGoalList({ goals, focusedGoalId, onGoalClick }: {
+  goals: readonly GoalDTO[]
+  focusedGoalId: string | null
+  onGoalClick: (id: string) => void
+}) {
+  return (
+    <div className="flex-1 overflow-y-auto px-2">
+      {goals.map((goal) => (
+        <SidebarGoalItem
+          key={goal.id}
+          goal={goal}
+          isActive={goal.id === focusedGoalId}
+          onClick={() => onGoalClick(goal.id)}
+        />
+      ))}
+    </div>
+  )
+}
+
+function SidebarGoalItem({ goal, isActive, onClick }: {
+  goal: GoalDTO
+  isActive: boolean
+  onClick: () => void
+}) {
+  const color = getStatusColor(goal.status)
+  const isCompleted = goal.status === "completed" || goal.status === "merged"
+  const needsAttention = goal.status === "blocked" || goal.status === "failed"
+  const isReview = goal.status === "review" || goal.status === "pending_review"
+  const tasksDone = 0 // Phase 2 will compute this from tasks
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-2 w-full px-2.5 py-2 rounded-lg text-left transition-colors mb-px",
+        isActive ? "bg-status-purple-surface" : "hover:bg-bg-hover",
+        isCompleted && "opacity-50",
+      )}
+    >
+      <span
+        className="w-2 h-2 rounded-full shrink-0"
+        style={{ backgroundColor: `var(--status-${color}-fg)` }}
+      />
+      <div className="flex-1 min-w-0">
+        <p className={cn(
+          "text-[13px] truncate",
+          isActive ? "font-semibold text-status-purple-fg" : "font-medium text-text-primary",
+        )}>
+          {goal.description}
+        </p>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <div className="w-10 h-[3px] rounded-full bg-border overflow-hidden">
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: goal.taskCount > 0 ? `${(tasksDone / goal.taskCount) * 100}%` : "0%",
+                backgroundColor: `var(--status-${color}-fg)`,
+              }}
+            />
+          </div>
+          <span className="text-[10px] font-mono text-text-muted">
+            {tasksDone}/{goal.taskCount}
+          </span>
+        </div>
+      </div>
+      {needsAttention && (
+        <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-status-yellow-surface text-status-yellow-fg shrink-0">!</span>
+      )}
+      {isReview && (
+        <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-status-purple-surface text-status-purple-fg shrink-0">R</span>
       )}
     </button>
   )
@@ -1115,6 +1134,8 @@ git commit -m "feat(shell): add WorkspaceGate composing existing setup/boot comp
 **Files:**
 - Modify: `src/app/layout-shell.tsx`
 
+**Note:** The old `src/components/layout/sidebar.tsx` and `src/lib/navigation.ts` (`NAV_SECTIONS`, `PAGE_TITLES`) remain in the codebase as dead code after this task. They will be removed in Phase 6 (Cleanup). Do not delete them now — old routes still reference `PAGE_TITLES`.
+
 - [ ] **Step 1: Update layout-shell to use new components**
 
 ```typescript
@@ -1184,12 +1205,29 @@ Open `http://localhost:3000` in browser. Verify:
 - Main content area shows existing page content (or WorkspaceGate setup form)
 - No InspectorPanel visible (nothing selected yet)
 
-- [ ] **Step 4: Run all tests**
+- [ ] **Step 4: Add collapse/expand round-trip smoke test**
+
+```typescript
+// Add to an existing test file, e.g. src/lib/__tests__/floor-store.test.ts or create inline
+import { useUIStore } from "@/lib/ui-store"
+
+describe("sidebar collapse/expand round-trip", () => {
+  it("toggleSidebar collapses and re-expands", () => {
+    expect(useUIStore.getState().sidebarCollapsed).toBe(false)
+    useUIStore.getState().toggleSidebar()
+    expect(useUIStore.getState().sidebarCollapsed).toBe(true)
+    useUIStore.getState().toggleSidebar()
+    expect(useUIStore.getState().sidebarCollapsed).toBe(false)
+  })
+})
+```
+
+- [ ] **Step 5: Run all tests**
 
 Run: `cd dashboard && npx vitest run`
 Expected: All tests pass (existing + new)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add dashboard/src/app/layout-shell.tsx
