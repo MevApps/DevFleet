@@ -54,7 +54,7 @@ export function InspectorPanel() {
       {breadcrumbs.length > 1 && (
         <div className="flex items-center gap-1 px-4 py-2 text-[11px] text-text-muted border-b border-border overflow-x-auto">
           {breadcrumbs.map((crumb, i) => (
-            <span key={crumb.id} className="flex items-center gap-1 whitespace-nowrap">
+            <span key={`${i}-${crumb.id}`} className="flex items-center gap-1 whitespace-nowrap">
               {i > 0 && <span className="text-text-muted">&gt;</span>}
               <button
                 onClick={() => navigateBreadcrumb(i)}
