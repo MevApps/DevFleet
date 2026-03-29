@@ -1,6 +1,6 @@
 // src/app/layout-shell.tsx
 "use client"
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { TopBar } from "@/components/layout/top-bar"
 import { InspectorPanel } from "@/components/layout/inspector-panel"
@@ -9,6 +9,7 @@ import { useSSE } from "@/lib/useSSE"
 import { useUIStore } from "@/lib/ui-store"
 import { useWorkspaceStore } from "@/lib/workspace-store"
 import { useDashboardStore } from "@/lib/store"
+import { useFloorStore } from "@/lib/floor-store"
 import { api } from "@/lib/api"
 
 export function LayoutShell({ children }: { children: React.ReactNode }) {
@@ -37,13 +38,20 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
       .catch(() => useWorkspaceStore.getState().clear())
   }, [])
 
+  const hasAutoNavigated = useRef(false)
+
   // Consolidated data fetch when workspace is active
   useEffect(() => {
     if (wsRun?.status === "active") {
-      fetchLiveFloor()
-      fetchPipeline()
-      fetchMetrics()
-      fetchAlerts()
+      fetchLiveFloor().catch(() => {})
+      fetchPipeline().then(() => {
+        if (!hasAutoNavigated.current && useDashboardStore.getState().goals.length === 0) {
+          hasAutoNavigated.current = true
+          useFloorStore.getState().setActiveSection("new-goal")
+        }
+      }).catch(() => {})
+      fetchMetrics().catch(() => {})
+      fetchAlerts().catch(() => {})
     }
   }, [wsRun?.status, fetchLiveFloor, fetchPipeline, fetchMetrics, fetchAlerts])
 
