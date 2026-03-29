@@ -252,7 +252,6 @@ Workspace is a prerequisite for all fleet operations. The UI reflects this.
 - Pane 1: Visible but dimmed (40% opacity, non-interactive), all counts show `0`
 - Pane 3: Collapsed
 - Top bar badge: Amber "No Workspace"
-- Status bar: "Workspace inactive — boot to begin"
 
 ### During Boot
 
@@ -272,7 +271,7 @@ Workspace is a prerequisite for all fleet operations. The UI reflects this.
 - Pane 2: Active Floor (Stream view, empty until goals created)
 - Pane 1: Interactive, counts populate as goals/agents come online
 - Top bar badge: Green "Workspace Active"
-- `+ New Goal` button appears in floor header
+- Sidebar `+ New Goal` button becomes active
 
 ### Workspace Stop/Failure
 
@@ -285,7 +284,7 @@ Workspace is a prerequisite for all fleet operations. The UI reflects this.
 - **Boot fails on step 3 (mid-sequence):** Boot card shows the failed step highlighted in red with the error message. "Retry" button restarts from **step 1** (not mid-sequence) — partial boot state is not recoverable. A "Cancel" button returns to the setup form.
 - **SSE disconnects during boot:** Boot progress freezes. After 10s, show "Connection lost — boot may still be in progress." On SSE reconnect, fetch workspace status from REST API to sync state.
 - **Budget hits 100% during active session:** Top bar budget badge turns red. A non-dismissable banner appears at the top of Pane 2: "Session budget exhausted. Running tasks will complete but no new tasks will be assigned." Agents finish current work then go idle. `+ New Goal` button is disabled.
-- **Workspace becomes unreachable (backend down):** All real-time data freezes. Status bar SSE indicator shows red "Disconnected". Pane 1 counts show last-known values with a "stale" indicator. Reconnection is automatic; once restored, a full refetch syncs state.
+- **Workspace becomes unreachable (backend down):** All real-time data freezes. Top bar alert bell pulses red to indicate disconnection. Fleet summary chips show last-known values with a "stale" styling (muted, italic). Reconnection is automatic; once restored, a full refetch syncs state.
 
 ---
 
@@ -293,26 +292,26 @@ Workspace is a prerequisite for all fleet operations. The UI reflects this.
 
 ### Workflow A: Creating a Goal -> Watching it Shatter
 
-1. User clicks `+ New Goal` (or `Cmd+K` -> "new goal")
-2. Inline form slides open at top of stream — fields: description, budget, priority. Not a modal.
-3. User submits. Form collapses into new goal row at top of stream.
-4. Row shows "Decomposing..." with shimmer animation on phase bar.
-5. Supervisor agent creates tasks via SSE (`task.created`, `task.assigned`). Row auto-expands. Task cards materialize one by one into phase lanes in real-time.
-6. Decomposition completes: badge changes to "Active", phase bar fills with colored segments.
-7. User collapses and moves on, or clicks any task to inspect.
+1. User clicks `+ New Goal` in the sidebar (or `Cmd+N`).
+2. Inline form slides open below the button in the sidebar — fields: description, budget, priority. Not a modal, not a page change.
+3. User submits. Form collapses. New goal appears at the top of the sidebar Recents list. Floor navigates to the Goal Focus View for the new goal.
+4. Goal Focus View shows "Decomposing..." with shimmer animation on the phase progress bar. Phase lanes are empty.
+5. Supervisor agent creates tasks via SSE (`task.created`, `task.assigned`). Task cards materialize one by one into their phase lanes in real-time.
+6. Decomposition completes: status badge changes to "Active", phase bar fills with colored segments, stat cards populate.
+7. User clicks any task card to inspect it, or clicks another goal in the sidebar to move on.
 
 **Zero page transitions.**
 
 ### Workflow B: Intervening on Agent Error
 
-1. **Signal:** Pane 1 "Needs Attention" count increments. Affected goal row gets amber left border. Task card shows red error badge.
-2. **Navigate:** User clicks "Needs Attention" in Pane 1 to filter stream. Expands goal, clicks errored task card.
+1. **Signal:** Top bar "need attention" chip increments. The affected goal in the sidebar Recents shows an amber `!` badge. If in Stream view, the goal row gets an amber left border.
+2. **Navigate:** User clicks the errored goal in the sidebar (or notices the amber badge and clicks it). Goal Focus View opens. The errored task card in the phase lanes shows a red error badge. User clicks it.
 3. **Inspect:** Inspector slides in. Status "Failed". Error block shows message, stack trace, failing agent. Activity tab shows event chain to failure.
 4. **Act:** Three options:
    - **Retry** — Requeues task for same agent
    - **Reassign** — Dropdown to pick different agent
    - **Discard** — Abandons task, goal adjusts
-5. **Confirm:** Task card updates in real-time via SSE. Pane 1 attention count decrements if no other issues remain.
+5. **Confirm:** Task card updates in real-time via SSE. Top bar attention chip decrements. Sidebar goal badge clears if no other issues remain on that goal.
 
 **Zero page transitions.**
 
@@ -363,7 +362,7 @@ Each entry specifies the reuse strategy: **extend** (add props, backward compati
 
 - `Sidebar` — Replaced by AppSidebar
 - `WorkspaceRequiredNotice` — Absorbed into WorkspaceGate
-- `WorkspaceGoalLog` — Absorbed into FleetNavigator budget/goal summary
+- `WorkspaceGoalLog` — Absorbed into sidebar Recents list and user section budget display
 - Page-level layouts for all 11 routes — Replaced by single ThreePaneLayout
 
 ## State Management
