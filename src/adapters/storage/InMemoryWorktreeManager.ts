@@ -13,6 +13,7 @@ export class InMemoryWorktreeManager implements WorktreeManager {
   }
 
   async merge(branch: string, _targetBranch?: string): Promise<MergeResult> {
+    console.log(`[InMemoryWorktreeManager] merge called for "${branch}" (THIS IS THE MOCK — no real git merge happening)`)
     if (!this.branches.has(branch)) {
       return { success: false, error: `Branch ${branch} not found` }
     }

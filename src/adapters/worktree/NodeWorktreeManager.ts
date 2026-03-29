@@ -25,9 +25,16 @@ export class NodeWorktreeManager implements WorktreeManager {
 
   async merge(branch: string, _targetBranch?: string): Promise<MergeResult> {
     try {
-      await this.shell.execute("git", ["merge", branch, "--no-edit"])
+      const beforeHead = (await this.shell.execute("git", ["rev-parse", "HEAD"])).stdout.trim()
+      const currentBranch = (await this.shell.execute("git", ["rev-parse", "--abbrev-ref", "HEAD"])).stdout.trim()
+      console.log(`[NodeWorktreeManager] merging "${branch}" into "${currentBranch}" (HEAD: ${beforeHead.slice(0, 8)})`)
+      const mergeResult = await this.shell.execute("git", ["merge", branch, "--no-edit"])
+      if (mergeResult.exitCode !== 0) {
+        console.error(`[NodeWorktreeManager] merge failed:`, mergeResult.stderr)
+      }
       const commitResult = await this.shell.execute("git", ["rev-parse", "HEAD"])
       const commit = commitResult.stdout.trim()
+      console.log(`[NodeWorktreeManager] after merge HEAD: ${commit.slice(0, 8)} (changed: ${commit !== beforeHead})`)
 
       const worktreePath = this.worktreePath(branch)
       await this.shell.execute("git", ["worktree", "remove", worktreePath, "--force"]).catch(() => {})

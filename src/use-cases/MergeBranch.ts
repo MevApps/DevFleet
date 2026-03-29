@@ -17,7 +17,9 @@ export class MergeBranch {
     if (!task) return failure(`Task ${taskId} not found`)
     if (!task.branch) return failure(`Task ${taskId} has no branch`)
 
+    console.log(`[MergeBranch] merging branch "${task.branch}" for task ${taskId}`)
     const mergeResult = await this.worktree.merge(task.branch)
+    console.log(`[MergeBranch] result: success=${mergeResult.success} commit=${mergeResult.commit?.slice(0, 8) ?? "none"} error=${mergeResult.error ?? "none"}`)
     if (!mergeResult.success) {
       return failure(`Merge failed: ${mergeResult.error}`)
     }
