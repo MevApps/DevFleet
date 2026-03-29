@@ -107,19 +107,21 @@ Add imports at top of `active-floor.tsx`:
 
 ```typescript
 import { SecondaryViewWrapper } from "./secondary-view-wrapper"
-import { lazy, Suspense } from "react"
 ```
 
-Add lazy imports below the regular imports:
+Add direct imports for the existing page components below the regular imports:
 
 ```typescript
-// Lazy-load secondary views to avoid bundling them in the main floor chunk
-const FinancialsPage = lazy(() => import("@/app/financials/page"))
-const QualityPage = lazy(() => import("@/app/quality/page"))
-const PerformancePage = lazy(() => import("@/app/analytics/performance/page"))
-const SystemPage = lazy(() => import("@/app/system/page"))
-const InsightsPage = lazy(() => import("@/app/insights/page"))
+// Secondary view pages — direct imports (small components, no lazy overhead needed)
+import FinancialsPage from "@/app/financials/page"
+import QualityPage from "@/app/quality/page"
+import PerformancePage from "@/app/analytics/performance/page"
+import InsightsPage from "@/app/insights/page"
+import SystemPage from "@/app/system/page"
+import { WorkspaceSetupForm } from "./workspace-setup-form"
 ```
+
+**Note:** These are direct imports, NOT lazy. The pages are small client components — the bundle impact is negligible and direct imports fail at build time (not runtime) if a file is moved. Lazy loading adds complexity for no real benefit at this scale.
 
 Find and replace the secondary sections placeholder block at the bottom:
 
@@ -141,13 +143,12 @@ Replace with:
   if (activeSection === "analytics") {
     return (
       <SecondaryViewWrapper title="Analytics">
-        <Suspense fallback={<p className="text-sm text-text-muted">Loading...</p>}>
-          <div className="space-y-6">
-            <FinancialsPage />
-            <QualityPage />
-            <PerformancePage />
-          </div>
-        </Suspense>
+        <div className="space-y-6">
+          <FinancialsPage />
+          <QualityPage />
+          <PerformancePage />
+          <InsightsPage />
+        </div>
       </SecondaryViewWrapper>
     )
   }
@@ -155,19 +156,15 @@ Replace with:
   if (activeSection === "health") {
     return (
       <SecondaryViewWrapper title="System Health">
-        <Suspense fallback={<p className="text-sm text-text-muted">Loading...</p>}>
-          <SystemPage />
-        </Suspense>
+        <SystemPage />
       </SecondaryViewWrapper>
     )
   }
 
   if (activeSection === "settings") {
     return (
-      <SecondaryViewWrapper title="Settings">
-        <Suspense fallback={<p className="text-sm text-text-muted">Loading...</p>}>
-          <InsightsPage />
-        </Suspense>
+      <SecondaryViewWrapper title="Workspace Settings">
+        <WorkspaceSetupForm />
       </SecondaryViewWrapper>
     )
   }
@@ -178,7 +175,7 @@ Replace with:
 - [ ] **Step 2: Run all tests and build**
 
 Run: `cd dashboard && npx vitest run && npx next build`
-Expected: Pass. The lazy imports reference existing page files that export default components.
+Expected: Pass. Direct imports reference existing page files that export default components.
 
 - [ ] **Step 3: Commit**
 
