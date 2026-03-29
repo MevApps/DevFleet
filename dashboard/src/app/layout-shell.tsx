@@ -1,7 +1,9 @@
 "use client"
 import { useEffect } from "react"
-import { Sidebar } from "@/components/layout/sidebar"
+import { AppSidebar } from "@/components/layout/app-sidebar"
 import { TopBar } from "@/components/layout/top-bar"
+import { InspectorPanel } from "@/components/layout/inspector-panel"
+import { WorkspaceGate } from "@/components/composites/workspace-gate"
 import { useSSE } from "@/lib/useSSE"
 import { useUIStore } from "@/lib/ui-store"
 import { useWorkspaceStore } from "@/lib/workspace-store"
@@ -30,10 +32,17 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar />
+      <AppSidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
         <TopBar />
-        <main className="flex-1 overflow-auto p-6">{children}</main>
+        <div className="flex flex-1 overflow-hidden">
+          <main className="flex-1 overflow-auto p-6">
+            <WorkspaceGate>
+              {() => children}
+            </WorkspaceGate>
+          </main>
+          <InspectorPanel />
+        </div>
       </div>
     </div>
   )
