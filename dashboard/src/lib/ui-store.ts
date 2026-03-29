@@ -12,7 +12,7 @@ interface UIState {
 }
 
 export const useUIStore = create<UIState>((set) => ({
-  theme: "light",
+  theme: "dark",
   density: "comfortable",
   connectionState: "disconnected",
   sidebarCollapsed: false,
