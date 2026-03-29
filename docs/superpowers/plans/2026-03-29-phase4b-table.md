@@ -213,11 +213,12 @@ git commit -m "feat(table): add useTableState — sort, filter, and TableTask ty
 interface BulkActionBarProps {
   selectedCount: number
   onRetry: () => void
+  onReassign: () => void
   onDiscard: () => void
   onClearSelection: () => void
 }
 
-export function BulkActionBar({ selectedCount, onRetry, onDiscard, onClearSelection }: BulkActionBarProps) {
+export function BulkActionBar({ selectedCount, onRetry, onReassign, onDiscard, onClearSelection }: BulkActionBarProps) {
   if (selectedCount === 0) return null
 
   return (
@@ -233,6 +234,12 @@ export function BulkActionBar({ selectedCount, onRetry, onDiscard, onClearSelect
           Retry
         </button>
         <button
+          onClick={onReassign}
+          className="px-3 py-1.5 rounded-md text-[12px] font-semibold border border-border text-text-secondary hover:bg-bg-hover"
+        >
+          Reassign
+        </button>
+        <button
           onClick={onDiscard}
           className="px-3 py-1.5 rounded-md text-[12px] font-semibold border border-status-red-border text-status-red-fg hover:bg-status-red-surface"
         >
@@ -240,7 +247,7 @@ export function BulkActionBar({ selectedCount, onRetry, onDiscard, onClearSelect
         </button>
         <button
           onClick={onClearSelection}
-          className="px-3 py-1.5 rounded-md text-[12px] font-medium border border-border text-text-secondary hover:bg-bg-hover"
+          className="px-3 py-1.5 rounded-md text-[12px] font-medium border border-border text-text-muted hover:bg-bg-hover"
         >
           Clear
         </button>
@@ -437,6 +444,11 @@ export function TableView() {
     setSelectedIds(new Set())
   }
 
+  const handleBulkReassign = () => {
+    // TODO: Wire to API in future — for now, clear selection
+    setSelectedIds(new Set())
+  }
+
   const handleBulkDiscard = () => {
     // TODO: Wire to API in future — for now, clear selection
     setSelectedIds(new Set())
@@ -451,6 +463,7 @@ export function TableView() {
       <BulkActionBar
         selectedCount={selectedIds.size}
         onRetry={handleBulkRetry}
+        onReassign={handleBulkReassign}
         onDiscard={handleBulkDiscard}
         onClearSelection={() => setSelectedIds(new Set())}
       />
