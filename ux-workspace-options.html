@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DevFleet — Workspace Setup Options</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #f4f4f5;
+    color: #18181b;
+  }
+
+  /* ── Switcher ── */
+  .switcher {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 14px 24px;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid #e4e4e7;
+  }
+  .switcher-label { font-size: 13px; color: #71717a; font-weight: 500; }
+  .opt-btn {
+    padding: 7px 16px; border-radius: 8px; border: 1px solid #e4e4e7;
+    background: #fff; color: #52525b; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; font-family: 'Inter', sans-serif;
+  }
+  .opt-btn:hover { background: #f4f4f5; }
+  .opt-btn.active { background: #18181b; color: #fff; border-color: #18181b; }
+
+  .option-desc {
+    position: fixed; top: 56px; left: 0; right: 0; z-index: 999;
+    padding: 12px 24px;
+    background: #fffbeb; border-bottom: 1px solid #fde68a;
+    font-size: 13px; color: #92400e; text-align: center;
+    display: none;
+  }
+  .option-desc.active { display: block; }
+  .option-desc strong { color: #78350f; }
+
+  /* ── Layout shell ── */
+  .concept { display: none; padding-top: 104px; height: 100vh; }
+  .concept.active { display: flex; flex-direction: column; }
+
+  .shell { display: flex; flex: 1; overflow: hidden; }
+
+  /* Top bar */
+  .top-bar {
+    display: flex; align-items: center; padding: 0 20px; height: 48px;
+    background: #fff; border-bottom: 1px solid #e4e4e7; flex-shrink: 0;
+  }
+  .top-bar .logo { font-weight: 700; font-size: 15px; color: #18181b; }
+  .top-bar .cmd-k {
+    margin-left: 24px; padding: 5px 14px; border-radius: 8px;
+    background: #f4f4f5; border: 1px solid #e4e4e7; font-size: 13px; color: #71717a;
+    display: flex; align-items: center; gap: 8px; width: 240px;
+  }
+  .top-bar .cmd-k kbd { font-family: 'Inter', sans-serif; font-size: 11px; padding: 1px 5px; border-radius: 4px; background: #e4e4e7; color: #52525b; }
+  .top-bar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .ws-badge-inactive { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; background: #fef3c7; color: #92400e; }
+  .ws-badge-booting { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; background: #dbeafe; color: #1d4ed8; display: flex; align-items: center; gap: 6px; }
+  .ws-badge-active { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; background: #dcfce7; color: #166534; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: #a78bfa; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #fff; }
+
+  /* Pane 1 */
+  .pane1 {
+    width: 220px; flex-shrink: 0; background: #fff; border-right: 1px solid #e4e4e7; padding: 16px 0;
+  }
+  .section-label {
+    font-size: 11px; font-weight: 600; color: #a1a1aa; text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 0 16px; margin-bottom: 8px; margin-top: 16px;
+  }
+  .section-label:first-child { margin-top: 0; }
+  .nav-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 16px; font-size: 13px; color: #a1a1aa;
+  }
+  .nav-row .dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
+  .budget-gauge { margin: 16px 16px 0; padding: 12px; border-radius: 10px; background: #f4f4f5; }
+  .budget-gauge .budget-label { font-size: 11px; color: #71717a; font-weight: 500; }
+  .budget-gauge .budget-val { font-size: 20px; font-weight: 700; color: #18181b; margin-top: 2px; }
+
+  /* Pane 2 */
+  .pane2 { flex: 1; overflow-y: auto; background: #fafafa; position: relative; }
+
+  /* Pane 3 */
+  .pane3 { width: 400px; flex-shrink: 0; background: #fff; border-left: 1px solid #e4e4e7; }
+  .pane3-empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; color: #d4d4d8; font-size: 14px; gap: 8px;
+  }
+  .pane3-empty svg { opacity: 0.3; }
+
+  /* Status bar */
+  .status-bar {
+    display: flex; align-items: center; padding: 0 20px; height: 32px;
+    background: #fff; border-top: 1px solid #e4e4e7; font-size: 12px; gap: 16px;
+    color: #a1a1aa; font-family: 'JetBrains Mono', monospace; flex-shrink: 0;
+  }
+  .status-bar .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* ═══════════════════════════ */
+  /* OPTION A: Full-screen pane */
+  /* ═══════════════════════════ */
+
+  .fullscreen-setup {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; padding: 40px;
+  }
+  .setup-card {
+    width: 480px; background: #fff; border-radius: 16px; border: 1px solid #e4e4e7;
+    padding: 32px; box-shadow: 0 4px 24px rgba(0,0,0,0.04);
+  }
+  .setup-icon {
+    width: 48px; height: 48px; border-radius: 12px; background: #f4f4f5;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px;
+  }
+  .setup-title { font-size: 20px; font-weight: 700; color: #18181b; margin-bottom: 6px; }
+  .setup-subtitle { font-size: 14px; color: #71717a; margin-bottom: 24px; line-height: 1.5; }
+
+  .form-group { margin-bottom: 16px; }
+  .form-label { font-size: 12px; font-weight: 600; color: #52525b; margin-bottom: 6px; display: block; }
+  .form-input {
+    width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid #e4e4e7;
+    font-size: 14px; font-family: 'Inter', sans-serif; color: #18181b;
+    background: #fff; outline: none; transition: border-color 0.15s;
+  }
+  .form-input:focus { border-color: #a78bfa; box-shadow: 0 0 0 3px rgba(167,139,250,0.1); }
+  .form-input::placeholder { color: #d4d4d8; }
+  .form-select {
+    width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid #e4e4e7;
+    font-size: 14px; font-family: 'Inter', sans-serif; color: #18181b;
+    background: #fff; outline: none; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23a1a1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+  }
+  .form-row { display: flex; gap: 12px; }
+  .form-row .form-group { flex: 1; }
+
+  .setup-btn {
+    width: 100%; padding: 12px; border-radius: 10px; border: none;
+    background: #18181b; color: #fff; font-size: 14px; font-weight: 600;
+    cursor: pointer; font-family: 'Inter', sans-serif; margin-top: 8px;
+    transition: background 0.15s;
+  }
+  .setup-btn:hover { background: #27272a; }
+
+  /* Booting state for Option A */
+  .boot-fullscreen {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; padding: 40px;
+  }
+  .boot-card {
+    width: 480px; background: #fff; border-radius: 16px; border: 1px solid #e4e4e7;
+    padding: 32px; box-shadow: 0 4px 24px rgba(0,0,0,0.04); text-align: center;
+  }
+  .boot-title { font-size: 18px; font-weight: 700; color: #18181b; margin-bottom: 4px; }
+  .boot-subtitle { font-size: 13px; color: #71717a; margin-bottom: 24px; }
+  .boot-steps { text-align: left; }
+  .boot-step {
+    display: flex; align-items: center; gap: 10px; padding: 10px 0;
+    border-bottom: 1px solid #f4f4f5; font-size: 13px;
+  }
+  .boot-step:last-child { border-bottom: none; }
+  .boot-step .step-icon {
+    width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 12px; flex-shrink: 0;
+  }
+  .step-done { background: #dcfce7; color: #16a34a; }
+  .step-active { background: #dbeafe; color: #2563eb; }
+  .step-pending { background: #f4f4f5; color: #d4d4d8; }
+  .step-label { color: #3f3f46; flex: 1; }
+  .step-label.pending { color: #d4d4d8; }
+  .step-time { font-size: 11px; color: #a1a1aa; font-family: 'JetBrains Mono', monospace; }
+
+  .boot-progress-bar {
+    height: 4px; border-radius: 2px; background: #e4e4e7; margin-top: 20px; overflow: hidden;
+  }
+  .boot-progress-fill { height: 100%; border-radius: 2px; background: #3b82f6; transition: width 0.3s; }
+
+  /* Pane 1 disabled look */
+  .pane1-disabled { opacity: 0.4; pointer-events: none; }
+
+  /* ═══════════════════════════ */
+  /* OPTION B: Inspector panel  */
+  /* ═══════════════════════════ */
+
+  .inspector-setup { padding: 20px; }
+  .insp-accent { height: 3px; background: #f59e0b; }
+  .insp-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 1px solid #e4e4e7;
+  }
+  .insp-header .entity-type { font-size: 11px; font-weight: 600; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.04em; }
+  .insp-setup-title { font-size: 15px; font-weight: 700; color: #18181b; margin-bottom: 4px; }
+  .insp-setup-sub { font-size: 13px; color: #71717a; margin-bottom: 20px; }
+
+  .insp-form-group { margin-bottom: 14px; }
+  .insp-form-label { font-size: 11px; font-weight: 600; color: #52525b; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 4px; display: block; }
+  .insp-form-input {
+    width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #e4e4e7;
+    font-size: 13px; font-family: 'Inter', sans-serif; color: #18181b; outline: none;
+  }
+  .insp-form-select {
+    width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #e4e4e7;
+    font-size: 13px; font-family: 'Inter', sans-serif; color: #18181b; outline: none;
+    appearance: none; background: #fff;
+    background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23a1a1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center;
+  }
+  .insp-form-row { display: flex; gap: 10px; }
+  .insp-form-row .insp-form-group { flex: 1; }
+  .insp-setup-btn {
+    width: 100%; padding: 10px; border-radius: 8px; border: none;
+    background: #18181b; color: #fff; font-size: 13px; font-weight: 600;
+    cursor: pointer; font-family: 'Inter', sans-serif; margin-top: 6px;
+  }
+
+  /* Empty floor for option B */
+  .empty-floor {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; color: #d4d4d8; gap: 8px;
+  }
+  .empty-floor .empty-icon { font-size: 48px; opacity: 0.2; }
+  .empty-floor .empty-title { font-size: 15px; font-weight: 600; color: #a1a1aa; }
+  .empty-floor .empty-sub { font-size: 13px; color: #d4d4d8; text-align: center; max-width: 280px; line-height: 1.5; }
+  .empty-floor .empty-arrow { font-size: 13px; color: #a1a1aa; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+
+  /* ═══════════════════════════ */
+  /* OPTION C: Modal dialog     */
+  /* ═══════════════════════════ */
+
+  .modal-overlay {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.3);
+    display: flex; align-items: center; justify-content: center; z-index: 100;
+    backdrop-filter: blur(4px);
+  }
+  .modal-card {
+    width: 440px; background: #fff; border-radius: 14px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.12); overflow: hidden;
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid #e4e4e7;
+  }
+  .modal-header .modal-title { font-size: 15px; font-weight: 700; color: #18181b; }
+  .modal-header .modal-close {
+    background: none; border: none; color: #a1a1aa; font-size: 20px; cursor: pointer;
+    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+  }
+  .modal-header .modal-close:hover { background: #f4f4f5; }
+  .modal-body { padding: 20px; }
+  .modal-footer { padding: 16px 20px; border-top: 1px solid #e4e4e7; display: flex; gap: 8px; justify-content: flex-end; }
+  .modal-btn {
+    padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    cursor: pointer; font-family: 'Inter', sans-serif; border: 1px solid #e4e4e7;
+  }
+  .modal-btn.primary { background: #18181b; color: #fff; border-color: #18181b; }
+  .modal-btn.secondary { background: #fff; color: #52525b; }
+
+  /* Top bar progress for booting state in C */
+  .topbar-progress {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 3px;
+    background: #e4e4e7;
+  }
+  .topbar-progress-fill { height: 100%; background: #3b82f6; width: 60%; transition: width 0.3s; }
+
+  /* Floor with faded goals behind modal */
+  .floor-faded { opacity: 0.3; padding: 20px 24px; }
+  .faded-row {
+    background: #fff; border-radius: 12px; border: 1px solid #e4e4e7;
+    padding: 14px 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px;
+  }
+  .faded-row .fr-chevron { color: #d4d4d8; font-size: 14px; }
+  .faded-row .fr-id { font-size: 12px; color: #d4d4d8; }
+  .faded-row .fr-title { font-size: 14px; color: #a1a1aa; flex: 1; }
+  .faded-row .fr-bar { width: 120px; height: 6px; border-radius: 3px; background: #e4e4e7; }
+
+  /* ── Note ── */
+  .note-area {
+    position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+    z-index: 50; width: 600px;
+  }
+  .note {
+    padding: 14px 16px; border-radius: 10px;
+    background: #fff; border: 1px solid #e4e4e7;
+    font-size: 13px; color: #52525b; line-height: 1.5;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    display: none;
+  }
+  .note.active { display: block; }
+  .note strong { color: #18181b; }
+  .note .pro { color: #16a34a; font-weight: 600; }
+  .note .con { color: #dc2626; font-weight: 600; }
+  .note .rec { color: #2563eb; font-weight: 600; }
+
+  /* Spinner for booting */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 16px; height: 16px; border: 2px solid #93c5fd; border-top-color: #2563eb;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  .spinner-sm {
+    width: 12px; height: 12px; border: 2px solid #93c5fd; border-top-color: #2563eb;
+    border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0;
+  }
+
+  /* State toggle buttons */
+  .state-toggle {
+    position: fixed; top: 104px; right: 24px; z-index: 998;
+    display: flex; gap: 6px;
+  }
+  .state-btn {
+    padding: 5px 12px; border-radius: 6px; border: 1px solid #e4e4e7;
+    background: #fff; color: #71717a; font-size: 11px; font-weight: 600;
+    cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.15s;
+  }
+  .state-btn:hover { background: #f4f4f5; }
+  .state-btn.active { background: #ede9fe; color: #6d28d9; border-color: #c4b5fd; }
+</style>
+</head>
+<body>
+
+<!-- Switcher -->
+<div class="switcher">
+  <span class="switcher-label">Workspace Setup Location:</span>
+  <button class="opt-btn active" onclick="showOption('a')">A: Full-Screen Floor</button>
+  <button class="opt-btn" onclick="showOption('b')">B: Inspector Panel</button>
+  <button class="opt-btn" onclick="showOption('c')">C: Modal Dialog</button>
+</div>
+
+<div id="desc-a" class="option-desc active">
+  <strong>Option A:</strong> The entire Active Floor becomes the setup/boot screen. Pane 1 is dimmed. Nothing else competes for attention until the workspace is live.
+</div>
+<div id="desc-b" class="option-desc">
+  <strong>Option B:</strong> Setup form lives in the Inspector (Pane 3). The floor shows an empty state pointing to the inspector. Less disruptive but the form might feel buried.
+</div>
+<div id="desc-c" class="option-desc">
+  <strong>Option C:</strong> A centered modal for setup. Boot progress is a thin bar in the top bar. The floor is visible (blurred) behind. Lightest touch on layout.
+</div>
+
+<!-- State toggle (shown for all) -->
+<div class="state-toggle" id="state-toggle"></div>
+
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- OPTION A: Full-Screen Floor                -->
+<!-- ═══════════════════════════════════════════ -->
+<div id="opt-a" class="concept active">
+  <!-- Top bar -->
+  <div class="top-bar">
+    <span class="logo">DevFleet</span>
+    <div class="cmd-k">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      Search...
+      <kbd style="margin-left:auto">&#8984;K</kbd>
+    </div>
+    <div class="top-bar-right">
+      <span id="a-ws-badge" class="ws-badge-inactive">No Workspace</span>
+      <div class="avatar">M</div>
+    </div>
+  </div>
+  <div class="shell">
+    <div class="pane1" id="a-pane1">
+      <div class="section-label">Triage</div>
+      <div class="nav-row"><span style="display:flex;align-items:center"><span class="dot" style="background:#d4d4d8"></span> Active</span> <span style="color:#d4d4d8">0</span></div>
+      <div class="nav-row"><span style="display:flex;align-items:center"><span class="dot" style="background:#d4d4d8"></span> Attention</span> <span style="color:#d4d4d8">0</span></div>
+      <div class="nav-row"><span style="display:flex;align-items:center"><span class="dot" style="background:#d4d4d8"></span> Review</span> <span style="color:#d4d4d8">0</span></div>
+      <div class="section-label">Agents</div>
+      <div class="nav-row"><span style="display:flex;align-items:center"><span class="dot" style="background:#d4d4d8"></span> Idle</span> <span style="color:#d4d4d8">0</span></div>
+      <div class="budget-gauge" style="opacity:0.4">
+        <div class="budget-label">Session Spend</div>
+        <div class="budget-val" style="color:#d4d4d8">$0.00</div>
+      </div>
+    </div>
+
+    <!-- Setup State -->
+    <div class="pane2" id="a-floor-setup">
+      <div class="fullscreen-setup">
+        <div class="setup-card">
+          <div class="setup-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          </div>
+          <div class="setup-title">Start a Workspace</div>
+          <div class="setup-subtitle">Configure your fleet before creating goals. A workspace clones the repo and sets up the environment for your agents.</div>
+          <div class="form-group">
+            <label class="form-label">Repository URL</label>
+            <input class="form-input" type="text" value="https://github.com/MevApps/DevFleet.git" />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Branch</label>
+              <select class="form-select"><option>master</option></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Agent Count</label>
+              <select class="form-select"><option>7 agents</option></select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Session Budget</label>
+            <input class="form-input" type="text" value="$100.00" />
+          </div>
+          <button class="setup-btn" onclick="showAState('booting')">Boot Workspace</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Booting State -->
+    <div class="pane2" id="a-floor-booting" style="display:none">
+      <div class="boot-fullscreen">
+        <div class="boot-card">
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:4px">
+            <div class="spinner"></div>
+            <span class="boot-title">Booting Workspace</span>
+          </div>
+          <div class="boot-subtitle">Setting up your fleet environment...</div>
+          <div class="boot-steps">
+            <div class="boot-step">
+              <div class="step-icon step-done">&#10003;</div>
+              <span class="step-label">Cloning repository</span>
+              <span class="step-time">2.4s</span>
+            </div>
+            <div class="boot-step">
+              <div class="step-icon step-done">&#10003;</div>
+              <span class="step-label">Installing dependencies</span>
+              <span class="step-time">8.1s</span>
+            </div>
+            <div class="boot-step">
+              <div class="step-icon step-active"><div class="spinner-sm"></div></div>
+              <span class="step-label">Detecting project structure</span>
+              <span class="step-time">...</span>
+            </div>
+            <div class="boot-step">
+              <div class="step-icon step-pending">4</div>
+              <span class="step-label pending">Spawning agents</span>
+              <span class="step-time"></span>
+            </div>
+            <div class="boot-step">
+              <div class="step-icon step-pending">5</div>
+              <span class="step-label pending">Running health checks</span>
+              <span class="step-time"></span>
+            </div>
+          </div>
+          <div class="boot-progress-bar"><div class="boot-progress-fill" style="width:55%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pane3">
+      <div class="pane3-empty">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+        <span>Click an item to inspect</span>
+      </div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span class="status-dot" style="background:#22c55e"></span>
+    <span>SSE connected</span>
+    <span style="color:#d4d4d8">|</span>
+    <span id="a-status-text" style="color:#d4d4d8">Workspace inactive — boot to begin</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- OPTION B: Inspector Panel                  -->
+<!-- ═══════════════════════════════════════════ -->
+<div id="opt-b" class="concept">
+  <div class="top-bar">
+    <span class="logo">DevFleet</span>
+    <div class="cmd-k">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      Search...
+      <kbd style="margin-left:auto">&#8984;K</kbd>
+    </div>
+    <div class="top-bar-right">
+      <span class="ws-badge-inactive">No Workspace</span>
+      <div class="avatar">M</div>
+    </div>
+  </div>
+  <div class="shell">
+    <div class="pane1">
+      <div class="section-label">Triage</div>
+      <div class="nav-row"><span style="display:flex;align-items:center"><span class="dot" style="background:#d4d4d8"></span> Active</span> <span style="color:#d4d4d8">0</span></div>
+      <div class="nav-row"><span style="display:flex;align-items:center"><span class="dot" style="background:#d4d4d8"></span> Attention</span> <span style="color:#d4d4d8">0</span></div>
+      <div class="nav-row"><span style="display:flex;align-items:center"><span class="dot" style="background:#d4d4d8"></span> Review</span> <span style="color:#d4d4d8">0</span></div>
+      <div class="section-label">Agents</div>
+      <div class="nav-row"><span style="display:flex;align-items:center"><span class="dot" style="background:#d4d4d8"></span> Idle</span> <span style="color:#d4d4d8">0</span></div>
+      <div class="budget-gauge" style="opacity:0.4">
+        <div class="budget-label">Session Spend</div>
+        <div class="budget-val" style="color:#d4d4d8">$0.00</div>
+      </div>
+    </div>
+
+    <div class="pane2">
+      <div class="empty-floor">
+        <div class="empty-icon">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#d4d4d8" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        </div>
+        <div class="empty-title">No active workspace</div>
+        <div class="empty-sub">Configure and boot a workspace using the setup panel to start creating goals.</div>
+        <div class="empty-arrow">
+          Setup is in the panel
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="pane3" style="padding:0">
+      <div class="insp-accent" style="background:#f59e0b"></div>
+      <div class="insp-header">
+        <span class="entity-type">Workspace Setup</span>
+      </div>
+      <div class="inspector-setup">
+        <div class="insp-setup-title">Start a Workspace</div>
+        <div class="insp-setup-sub">Configure your fleet environment.</div>
+
+        <div class="insp-form-group">
+          <label class="insp-form-label">Repository URL</label>
+          <input class="insp-form-input" type="text" value="https://github.com/MevApps/DevFleet.git" />
+        </div>
+        <div class="insp-form-row">
+          <div class="insp-form-group">
+            <label class="insp-form-label">Branch</label>
+            <select class="insp-form-select"><option>master</option></select>
+          </div>
+          <div class="insp-form-group">
+            <label class="insp-form-label">Agents</label>
+            <select class="insp-form-select"><option>7</option></select>
+          </div>
+        </div>
+        <div class="insp-form-group">
+          <label class="insp-form-label">Session Budget</label>
+          <input class="insp-form-input" type="text" value="$100.00" />
+        </div>
+        <button class="insp-setup-btn">Boot Workspace</button>
+      </div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span class="status-dot" style="background:#22c55e"></span>
+    <span>SSE connected</span>
+    <span style="color:#d4d4d8">|</span>
+    <span style="color:#d4d4d8">Workspace inactive — configure in inspector</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- OPTION C: Modal Dialog                     -->
+<!-- ═══════════════════════════════════════════ -->
+<div id="opt-c" class="concept">
+  <div class="top-bar" style="position:relative">
+    <span class="logo">DevFleet</span>
+    <div class="cmd-k">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      Search...
+      <kbd style="margin-left:auto">&#8984;K</kbd>
+    </div>
+    <div class="top-bar-right">
+      <span class="ws-badge-inactive" style="cursor:pointer">
+        Start Workspace
+      </span>
+      <div class="avatar">M</div>
+    </div>
+  </div>
+  <div class="shell" style="position:relative">
+    <div class="pane1">
+      <div class="section-label">Triage</div>
+      <div class="nav-row"><span style="display:flex;align-items:center"><span class="dot" style="background:#d4d4d8"></span> Active</span> <span style="color:#d4d4d8">0</span></div>
+      <div class="nav-row"><span style="display:flex;align-items:center"><span class="dot" style="background:#d4d4d8"></span> Attention</span> <span style="color:#d4d4d8">0</span></div>
+      <div class="nav-row"><span style="display:flex;align-items:center"><span class="dot" style="background:#d4d4d8"></span> Review</span> <span style="color:#d4d4d8">0</span></div>
+      <div class="section-label">Agents</div>
+      <div class="nav-row"><span style="display:flex;align-items:center"><span class="dot" style="background:#d4d4d8"></span> Idle</span> <span style="color:#d4d4d8">0</span></div>
+      <div class="budget-gauge" style="opacity:0.4">
+        <div class="budget-label">Session Spend</div>
+        <div class="budget-val" style="color:#d4d4d8">$0.00</div>
+      </div>
+    </div>
+
+    <div class="pane2" style="position:relative">
+      <!-- Faded goal rows behind -->
+      <div class="floor-faded">
+        <div class="faded-row">
+          <span class="fr-chevron">&#9654;</span>
+          <span class="fr-id">#50</span>
+          <span class="fr-title">Add OAuth2 support for GitHub and Google</span>
+          <div class="fr-bar"></div>
+        </div>
+        <div class="faded-row">
+          <span class="fr-chevron">&#9654;</span>
+          <span class="fr-id">#48</span>
+          <span class="fr-title">Migrate user sessions to Redis</span>
+          <div class="fr-bar"></div>
+        </div>
+        <div class="faded-row">
+          <span class="fr-chevron">&#9654;</span>
+          <span class="fr-id">#47</span>
+          <span class="fr-title">Refactor logging to structured JSON</span>
+          <div class="fr-bar"></div>
+        </div>
+      </div>
+
+      <!-- Modal overlay -->
+      <div class="modal-overlay">
+        <div class="modal-card">
+          <div class="modal-header">
+            <span class="modal-title">Start Workspace</span>
+            <button class="modal-close">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Repository URL</label>
+              <input class="form-input" type="text" value="https://github.com/MevApps/DevFleet.git" />
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Branch</label>
+                <select class="form-select"><option>master</option></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Agent Count</label>
+                <select class="form-select"><option>7 agents</option></select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Session Budget</label>
+              <input class="form-input" type="text" value="$100.00" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="modal-btn secondary">Cancel</button>
+            <button class="modal-btn primary">Boot Workspace</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pane3">
+      <div class="pane3-empty">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+        <span>Click an item to inspect</span>
+      </div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span class="status-dot" style="background:#22c55e"></span>
+    <span>SSE connected</span>
+    <span style="color:#d4d4d8">|</span>
+    <span style="color:#d4d4d8">Workspace inactive</span>
+  </div>
+</div>
+
+
+<!-- Notes -->
+<div class="note-area">
+  <div class="note active" id="note-a">
+    <span class="pro">Pro:</span> Impossible to miss. Honest about system state — nothing works without a workspace, so the UI reflects that. Clean, focused onboarding experience. Boot progress is satisfying to watch.<br>
+    <span class="con">Con:</span> Slightly heavier — the full floor is taken over. But since nothing can happen without a workspace anyway, this is arguably correct.<br>
+    <span class="rec">Rec:</span> This is the recommended option. Click <strong>"Boot Workspace"</strong> to see the booting state.
+  </div>
+  <div class="note" id="note-b">
+    <span class="pro">Pro:</span> Less disruptive. The floor shows context (empty state) while setup happens in the side panel. Familiar inspector pattern.<br>
+    <span class="con">Con:</span> The setup form feels squeezed at 400px. The empty floor + inspector creates a split-attention problem — you're looking at two things that say the same thing ("nothing is happening yet"). The arrow pointing right feels like a workaround.
+  </div>
+  <div class="note" id="note-c">
+    <span class="pro">Pro:</span> Lightest touch on layout. Dismissable. Fast to invoke from the top bar. The floor is visible behind (even if blurred/faded).<br>
+    <span class="con">Con:</span> Modals feel transactional and can be dismissed accidentally. Boot progress needs a separate treatment (top-bar indicator). Two separate UI patterns for one flow (modal for setup, bar for progress) feels disjointed.
+  </div>
+</div>
+
+
+<script>
+function showOption(id) {
+  document.querySelectorAll('.concept').forEach(c => c.classList.remove('active'));
+  document.getElementById('opt-' + id).classList.add('active');
+  document.querySelectorAll('.option-desc').forEach(d => d.classList.remove('active'));
+  document.getElementById('desc-' + id).classList.add('active');
+  document.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.querySelectorAll('.note').forEach(n => n.classList.remove('active'));
+  document.getElementById('note-' + id).classList.add('active');
+}
+
+// Option A: toggle between setup and booting states
+function showAState(state) {
+  if (state === 'booting') {
+    document.getElementById('a-floor-setup').style.display = 'none';
+    document.getElementById('a-floor-booting').style.display = '';
+    document.getElementById('a-ws-badge').className = 'ws-badge-booting';
+    document.getElementById('a-ws-badge').innerHTML = '<div class="spinner-sm"></div> Booting...';
+    document.getElementById('a-status-text').style.color = '#2563eb';
+    document.getElementById('a-status-text').textContent = 'Booting workspace — detecting project structure...';
+    document.getElementById('a-pane1').classList.add('pane1-disabled');
+  } else {
+    document.getElementById('a-floor-setup').style.display = '';
+    document.getElementById('a-floor-booting').style.display = 'none';
+    document.getElementById('a-ws-badge').className = 'ws-badge-inactive';
+    document.getElementById('a-ws-badge').textContent = 'No Workspace';
+    document.getElementById('a-status-text').style.color = '#d4d4d8';
+    document.getElementById('a-status-text').textContent = 'Workspace inactive — boot to begin';
+    document.getElementById('a-pane1').classList.remove('pane1-disabled');
+  }
+}
+</script>
+</body>
+</html>

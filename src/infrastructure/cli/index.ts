@@ -1,4 +1,8 @@
+#!/usr/bin/env node
 import * as http from "node:http"
+import { spawn, type ChildProcess } from "node:child_process"
+import { existsSync } from "node:fs"
+import { join, resolve } from "node:path"
 import { buildSystem } from "../config/composition-root"
 import { createServer } from "../http/createServer"
 import type { Message } from "../../entities/Message"
@@ -34,12 +38,33 @@ async function main(): Promise<void> {
 
   await system.start()
 
-  const httpPort = parseInt(process.env["HTTP_PORT"] ?? "3100", 10)
+  const apiPort = parseInt(process.env["HTTP_PORT"] ?? "3100", 10)
+  const dashboardPort = parseInt(process.env["DASHBOARD_PORT"] ?? "3000", 10)
   const app = createServer(system.dashboardDeps)
   const server = http.createServer(app)
-  server.listen(httpPort, () => {
-    console.log(`\n  Dashboard: http://localhost:${httpPort}\n`)
-  })
+  server.listen(apiPort)
+
+  // Start the Next.js dashboard
+  const dashboardDir = findDashboardDir()
+  let dashboardProcess: ChildProcess | null = null
+
+  if (dashboardDir) {
+    dashboardProcess = spawn("npx", ["next", "start", "-p", String(dashboardPort)], {
+      cwd: dashboardDir,
+      stdio: "ignore",
+      env: { ...process.env, PORT: String(dashboardPort) },
+    })
+
+    dashboardProcess.on("error", (err) => {
+      console.error(`  Dashboard failed to start: ${err.message}`)
+      console.log(`  API still running at http://localhost:${apiPort}`)
+    })
+
+    console.log(`\n  Dashboard: http://localhost:${dashboardPort}\n`)
+  } else {
+    console.log(`\n  API: http://localhost:${apiPort}`)
+    console.log(`  (Dashboard not found — run 'npm run dev' in dashboard/ separately)\n`)
+  }
 
   // ---------------------------------------------------------------------------
   // Subscribe to key messages and print progress
@@ -109,6 +134,7 @@ async function main(): Promise<void> {
   // ---------------------------------------------------------------------------
   const shutdown = async () => {
     console.log("\nShutting down...")
+    if (dashboardProcess) dashboardProcess.kill()
     server.close()
     await system.stop()
     process.exit(0)
@@ -116,6 +142,19 @@ async function main(): Promise<void> {
 
   process.on("SIGINT", shutdown)
   process.on("SIGTERM", shutdown)
+}
+
+function findDashboardDir(): string | null {
+  // Check relative to the DevFleet package (works whether run via npm link or directly)
+  const candidates = [
+    join(__dirname, "..", "..", "..", "dashboard"),        // from dist/infrastructure/cli/
+    join(process.cwd(), "dashboard"),                      // from project root
+  ]
+  for (const dir of candidates) {
+    const resolved = resolve(dir)
+    if (existsSync(join(resolved, ".next"))) return resolved
+  }
+  return null
 }
 
 main().catch(err => {

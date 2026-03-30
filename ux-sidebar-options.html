@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DevFleet — Sidebar Options</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #f4f4f5; color: #18181b; }
+
+  /* ── Switcher ── */
+  .switcher {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 14px 24px;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid #e4e4e7;
+  }
+  .switcher-label { font-size: 13px; color: #71717a; font-weight: 500; }
+  .opt-btn {
+    padding: 7px 16px; border-radius: 8px; border: 1px solid #e4e4e7;
+    background: #fff; color: #52525b; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; font-family: 'Inter', sans-serif;
+  }
+  .opt-btn:hover { background: #f4f4f5; }
+  .opt-btn.active { background: #18181b; color: #fff; border-color: #18181b; }
+
+  .option-desc {
+    position: fixed; top: 56px; left: 0; right: 0; z-index: 999;
+    padding: 12px 24px;
+    background: #fffbeb; border-bottom: 1px solid #fde68a;
+    font-size: 13px; color: #92400e; text-align: center;
+    display: none;
+  }
+  .option-desc.active { display: block; }
+  .option-desc strong { color: #78350f; }
+
+  .concept { display: none; padding-top: 104px; height: 100vh; flex-direction: column; }
+  .concept.active { display: flex; }
+  .shell { display: flex; flex: 1; overflow: hidden; }
+
+  /* Top bar */
+  .top-bar {
+    display: flex; align-items: center; padding: 0 20px; height: 48px;
+    background: #fff; border-bottom: 1px solid #e4e4e7; flex-shrink: 0;
+  }
+  .top-bar .logo { font-weight: 700; font-size: 15px; color: #18181b; }
+  .top-bar .cmd-k {
+    margin-left: 24px; padding: 5px 14px; border-radius: 8px;
+    background: #f4f4f5; border: 1px solid #e4e4e7; font-size: 13px; color: #71717a;
+    display: flex; align-items: center; gap: 8px; width: 240px;
+  }
+  .top-bar .cmd-k kbd { font-size: 11px; padding: 1px 5px; border-radius: 4px; background: #e4e4e7; color: #52525b; }
+  .top-bar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .ws-badge { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; background: #dcfce7; color: #166534; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: #a78bfa; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #fff; }
+
+  /* Pane 2 placeholder */
+  .pane2 { flex: 1; background: #fafafa; padding: 20px 24px; overflow-y: auto; }
+  .floor-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .floor-title { font-size: 16px; font-weight: 700; color: #18181b; }
+
+  .goal-row {
+    background: #fff; border-radius: 12px; border: 1px solid #e4e4e7;
+    padding: 14px 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px;
+  }
+  .goal-row .gr-chevron { color: #a1a1aa; font-size: 14px; }
+  .goal-row .gr-id { font-size: 12px; color: #a1a1aa; font-weight: 500; font-family: 'JetBrains Mono', monospace; }
+  .goal-row .gr-title { font-size: 14px; font-weight: 600; color: #18181b; flex: 1; }
+  .goal-row .gr-bar { width: 120px; height: 6px; border-radius: 3px; background: #e4e4e7; overflow: hidden; display: flex; }
+  .goal-row .gr-bar .seg { height: 100%; }
+  .goal-row .gr-count { font-size: 12px; color: #71717a; white-space: nowrap; }
+  .goal-row .gr-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .badge-active { background: #dbeafe; color: #1d4ed8; }
+  .badge-review { background: #f3e8ff; color: #7c3aed; }
+  .badge-warn { background: #fef3c7; color: #b45309; }
+  .goal-row.warn { border-left: 3px solid #f59e0b; }
+
+  /* Status bar */
+  .status-bar {
+    display: flex; align-items: center; padding: 0 20px; height: 32px;
+    background: #fff; border-top: 1px solid #e4e4e7; font-size: 12px; gap: 16px;
+    color: #a1a1aa; font-family: 'JetBrains Mono', monospace; flex-shrink: 0;
+  }
+  .status-bar .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; }
+
+  /* ── SVG icon helper ── */
+  .icon { width: 18px; height: 18px; flex-shrink: 0; }
+  .icon-sm { width: 16px; height: 16px; flex-shrink: 0; }
+  .icon-xs { width: 14px; height: 14px; flex-shrink: 0; }
+
+
+  /* ══════════════════════════════════════════ */
+  /* OPTION A: Current spec — Data Dashboard   */
+  /* ══════════════════════════════════════════ */
+
+  #opt-a .pane1 {
+    width: 220px; flex-shrink: 0; background: #fff; border-right: 1px solid #e4e4e7;
+    padding: 16px 0; display: flex; flex-direction: column;
+  }
+  #opt-a .section-label {
+    font-size: 11px; font-weight: 600; color: #a1a1aa; text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 0 16px; margin-bottom: 8px; margin-top: 16px;
+  }
+  #opt-a .section-label:first-child { margin-top: 0; }
+  #opt-a .nav-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 16px; cursor: pointer; transition: background 0.15s; font-size: 13px;
+  }
+  #opt-a .nav-row:hover { background: #f4f4f5; }
+  #opt-a .nav-row.active { background: #ede9fe; }
+  #opt-a .nav-row .label { display: flex; align-items: center; gap: 8px; color: #3f3f46; font-weight: 500; }
+  #opt-a .nav-row.active .label { color: #6d28d9; }
+  #opt-a .nav-row .dot { width: 8px; height: 8px; border-radius: 50%; }
+  #opt-a .nav-row .count { font-size: 12px; font-weight: 600; color: #a1a1aa; }
+  #opt-a .nav-row .count.warn { color: #d97706; }
+  #opt-a .nav-row .count.ok { color: #16a34a; }
+  #opt-a .budget-gauge {
+    margin: 16px 16px 0; padding: 12px; border-radius: 10px; background: #f4f4f5;
+  }
+  #opt-a .budget-gauge .budget-label { font-size: 11px; color: #71717a; font-weight: 500; }
+  #opt-a .budget-gauge .budget-val { font-size: 20px; font-weight: 700; color: #18181b; margin-top: 2px; }
+  #opt-a .budget-gauge .budget-bar { height: 4px; border-radius: 2px; background: #e4e4e7; margin-top: 8px; overflow: hidden; }
+  #opt-a .budget-gauge .budget-bar-fill { height: 100%; border-radius: 2px; background: #8b5cf6; }
+  #opt-a .more-section {
+    margin-top: auto; border-top: 1px solid #e4e4e7; padding-top: 8px;
+  }
+  #opt-a .more-toggle {
+    display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+    font-size: 12px; font-weight: 600; color: #a1a1aa; cursor: pointer;
+  }
+
+
+  /* ══════════════════════════════════════════ */
+  /* OPTION B: Claude/ChatGPT-style sidebar    */
+  /* ══════════════════════════════════════════ */
+
+  #opt-b .pane1 {
+    width: 260px; flex-shrink: 0; background: #f9fafb; border-right: 1px solid #e4e4e7;
+    display: flex; flex-direction: column; padding: 0;
+  }
+
+  /* Top actions */
+  #opt-b .sidebar-top {
+    padding: 12px 12px 0; display: flex; flex-direction: column; gap: 6px;
+  }
+  #opt-b .new-goal-btn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-radius: 10px; border: 1px solid #e4e4e7;
+    background: #fff; color: #18181b; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; font-family: 'Inter', sans-serif;
+    width: 100%;
+  }
+  #opt-b .new-goal-btn:hover { background: #f4f4f5; }
+  #opt-b .new-goal-btn .plus { font-size: 18px; color: #71717a; }
+  #opt-b .new-goal-btn kbd { margin-left: auto; font-size: 11px; padding: 1px 5px; border-radius: 4px; background: #f4f4f5; color: #a1a1aa; font-family: 'Inter', sans-serif; border: 1px solid #e4e4e7; }
+
+  #opt-b .sidebar-search {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border-radius: 10px; border: 1px solid #e4e4e7;
+    background: #fff; color: #a1a1aa; font-size: 13px; cursor: pointer;
+  }
+  #opt-b .sidebar-search:hover { border-color: #d4d4d8; }
+
+  /* Triage pills */
+  #opt-b .triage-bar {
+    display: flex; gap: 4px; padding: 10px 12px 6px; flex-wrap: wrap;
+  }
+  #opt-b .triage-pill {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 8px; border: 1px solid #e4e4e7;
+    background: #fff; font-size: 11px; font-weight: 600; color: #71717a;
+    cursor: pointer; transition: all 0.15s; font-family: 'Inter', sans-serif;
+  }
+  #opt-b .triage-pill:hover { background: #f4f4f5; }
+  #opt-b .triage-pill.active { background: #18181b; color: #fff; border-color: #18181b; }
+  #opt-b .triage-pill .pill-dot { width: 6px; height: 6px; border-radius: 50%; }
+  #opt-b .triage-pill .pill-count { font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+  #opt-b .triage-pill.active .pill-dot { opacity: 0.6; }
+
+  /* Goal list */
+  #opt-b .goal-list {
+    flex: 1; overflow-y: auto; padding: 4px 8px;
+  }
+  #opt-b .goal-list-label {
+    font-size: 10px; font-weight: 600; color: #a1a1aa; text-transform: uppercase;
+    letter-spacing: 0.06em; padding: 10px 8px 6px;
+  }
+  #opt-b .sidebar-goal {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
+    transition: background 0.1s; margin-bottom: 2px;
+  }
+  #opt-b .sidebar-goal:hover { background: #f0f0f2; }
+  #opt-b .sidebar-goal.active { background: #ede9fe; }
+  #opt-b .sidebar-goal .sg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  #opt-b .sidebar-goal .sg-content { flex: 1; min-width: 0; }
+  #opt-b .sidebar-goal .sg-title {
+    font-size: 13px; font-weight: 500; color: #18181b;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #opt-b .sidebar-goal.active .sg-title { color: #6d28d9; font-weight: 600; }
+  #opt-b .sidebar-goal .sg-meta {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: #a1a1aa; margin-top: 1px;
+  }
+  #opt-b .sidebar-goal .sg-mini-bar {
+    width: 40px; height: 3px; border-radius: 2px; background: #e4e4e7; overflow: hidden; display: flex;
+  }
+  #opt-b .sidebar-goal .sg-mini-bar .seg { height: 100%; }
+  #opt-b .sidebar-goal .sg-count { font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+  #opt-b .sidebar-goal .sg-badge {
+    padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 700; margin-left: auto; flex-shrink: 0;
+  }
+  .sg-badge-warn { background: #fef3c7; color: #b45309; }
+  .sg-badge-review { background: #f3e8ff; color: #7c3aed; }
+
+  /* Fleet summary strip */
+  #opt-b .fleet-strip {
+    padding: 8px 12px; border-top: 1px solid #e4e4e7; border-bottom: 1px solid #e4e4e7;
+    display: flex; align-items: center; gap: 12px; background: #fff;
+  }
+  #opt-b .fleet-stat {
+    display: flex; align-items: center; gap: 4px; font-size: 11px; color: #71717a;
+    cursor: pointer;
+  }
+  #opt-b .fleet-stat:hover { color: #3f3f46; }
+  #opt-b .fleet-stat .fs-val { font-weight: 700; color: #18181b; font-family: 'JetBrains Mono', monospace; }
+  #opt-b .fleet-stat .fs-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* Bottom user section */
+  #opt-b .sidebar-bottom {
+    padding: 8px 8px 12px; display: flex; flex-direction: column; gap: 2px;
+  }
+  #opt-b .sidebar-action {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
+    font-size: 13px; color: #52525b; transition: background 0.1s;
+  }
+  #opt-b .sidebar-action:hover { background: #f0f0f2; }
+  #opt-b .sidebar-action .sa-icon { color: #a1a1aa; display: flex; }
+
+  #opt-b .user-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
+    transition: background 0.1s; margin-top: 4px;
+  }
+  #opt-b .user-row:hover { background: #f0f0f2; }
+  #opt-b .user-avatar {
+    width: 32px; height: 32px; border-radius: 50%; background: #a78bfa;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; color: #fff; flex-shrink: 0;
+  }
+  #opt-b .user-info { flex: 1; min-width: 0; }
+  #opt-b .user-name { font-size: 13px; font-weight: 600; color: #18181b; }
+  #opt-b .user-plan { font-size: 11px; color: #a1a1aa; }
+  #opt-b .user-dots { color: #a1a1aa; font-size: 16px; letter-spacing: 2px; }
+
+  /* User popup menu */
+  #opt-b .user-popup {
+    position: absolute; bottom: 72px; left: 12px; width: 236px;
+    background: #fff; border: 1px solid #e4e4e7; border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.1); padding: 6px;
+    display: none; z-index: 100;
+  }
+  #opt-b .user-popup.show { display: block; }
+  #opt-b .popup-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px; font-size: 13px; color: #3f3f46;
+    cursor: pointer; transition: background 0.1s;
+  }
+  #opt-b .popup-item:hover { background: #f4f4f5; }
+  #opt-b .popup-item .pi-icon { color: #a1a1aa; display: flex; }
+  #opt-b .popup-divider { height: 1px; background: #e4e4e7; margin: 4px 0; }
+  #opt-b .popup-item.danger { color: #dc2626; }
+  #opt-b .popup-item.danger .pi-icon { color: #dc2626; }
+
+
+  /* ══════════════════════════════════════════ */
+  /* OPTION C: Hybrid — icons + data + goals   */
+  /* ══════════════════════════════════════════ */
+
+  #opt-c .pane1 {
+    width: 260px; flex-shrink: 0; background: #f9fafb; border-right: 1px solid #e4e4e7;
+    display: flex; flex-direction: column; padding: 0;
+  }
+
+  #opt-c .sidebar-top {
+    padding: 12px 12px 0; display: flex; flex-direction: column; gap: 6px;
+  }
+  #opt-c .new-goal-btn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-radius: 10px; border: 1px solid #e4e4e7;
+    background: #fff; color: #18181b; font-size: 13px; font-weight: 600;
+    cursor: pointer; font-family: 'Inter', sans-serif; width: 100%;
+  }
+  #opt-c .new-goal-btn:hover { background: #f4f4f5; }
+  #opt-c .new-goal-btn .plus { font-size: 18px; color: #71717a; }
+
+  /* Quick stats row */
+  #opt-c .quick-stats {
+    display: flex; gap: 6px; padding: 10px 12px 4px;
+  }
+  #opt-c .qs-card {
+    flex: 1; padding: 8px; border-radius: 8px; background: #fff; border: 1px solid #e4e4e7;
+    text-align: center; cursor: pointer; transition: all 0.15s;
+  }
+  #opt-c .qs-card:hover { border-color: #d4d4d8; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+  #opt-c .qs-card .qs-val { font-size: 16px; font-weight: 700; color: #18181b; font-family: 'JetBrains Mono', monospace; }
+  #opt-c .qs-card .qs-val.warn { color: #d97706; }
+  #opt-c .qs-card .qs-val.ok { color: #16a34a; }
+  #opt-c .qs-card .qs-label { font-size: 9px; font-weight: 600; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+  /* Triage tabs */
+  #opt-c .triage-tabs {
+    display: flex; border-bottom: 1px solid #e4e4e7; padding: 0 12px; margin-top: 6px;
+  }
+  #opt-c .triage-tab {
+    flex: 1; padding: 8px 0; font-size: 11px; font-weight: 600; color: #a1a1aa;
+    text-align: center; cursor: pointer; border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  #opt-c .triage-tab:hover { color: #52525b; }
+  #opt-c .triage-tab.active { color: #18181b; border-bottom-color: #8b5cf6; }
+
+  /* Goal list — same as Option B */
+  #opt-c .goal-list { flex: 1; overflow-y: auto; padding: 4px 8px; }
+  #opt-c .sidebar-goal {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
+    transition: background 0.1s; margin-bottom: 2px;
+  }
+  #opt-c .sidebar-goal:hover { background: #f0f0f2; }
+  #opt-c .sidebar-goal.active { background: #ede9fe; }
+  #opt-c .sidebar-goal .sg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  #opt-c .sidebar-goal .sg-content { flex: 1; min-width: 0; }
+  #opt-c .sidebar-goal .sg-title {
+    font-size: 13px; font-weight: 500; color: #18181b;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #opt-c .sidebar-goal.active .sg-title { color: #6d28d9; font-weight: 600; }
+  #opt-c .sidebar-goal .sg-meta {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: #a1a1aa; margin-top: 1px;
+  }
+  #opt-c .sidebar-goal .sg-mini-bar {
+    width: 40px; height: 3px; border-radius: 2px; background: #e4e4e7; overflow: hidden; display: flex;
+  }
+  #opt-c .sidebar-goal .sg-mini-bar .seg { height: 100%; }
+  #opt-c .sidebar-goal .sg-badge {
+    padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 700; margin-left: auto; flex-shrink: 0;
+  }
+
+  /* Bottom section — same as B */
+  #opt-c .sidebar-bottom {
+    border-top: 1px solid #e4e4e7;
+    padding: 8px 8px 12px; display: flex; flex-direction: column; gap: 2px;
+  }
+  #opt-c .sidebar-action {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
+    font-size: 13px; color: #52525b; transition: background 0.1s;
+  }
+  #opt-c .sidebar-action:hover { background: #f0f0f2; }
+  #opt-c .sidebar-action .sa-icon { color: #a1a1aa; display: flex; }
+  #opt-c .user-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
+    transition: background 0.1s; margin-top: 4px;
+  }
+  #opt-c .user-row:hover { background: #f0f0f2; }
+  #opt-c .user-avatar {
+    width: 32px; height: 32px; border-radius: 50%; background: #a78bfa;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; color: #fff; flex-shrink: 0;
+  }
+  #opt-c .user-info { flex: 1; min-width: 0; }
+  #opt-c .user-name { font-size: 13px; font-weight: 600; color: #18181b; }
+  #opt-c .user-plan { font-size: 11px; color: #a1a1aa; }
+
+  /* Note */
+  .note-area {
+    position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+    z-index: 50; width: 640px;
+  }
+  .note {
+    padding: 14px 16px; border-radius: 10px;
+    background: #fff; border: 1px solid #e4e4e7;
+    font-size: 13px; color: #52525b; line-height: 1.6;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    display: none;
+  }
+  .note.active { display: block; }
+  .note strong { color: #18181b; }
+  .note .pro { color: #16a34a; font-weight: 600; }
+  .note .con { color: #dc2626; font-weight: 600; }
+  .note .key { color: #2563eb; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- Switcher -->
+<div class="switcher">
+  <span class="switcher-label">Pane 1 Sidebar:</span>
+  <button class="opt-btn active" onclick="showOption('a')">A: Current Spec (Data Dashboard)</button>
+  <button class="opt-btn" onclick="showOption('b')">B: Chat-App Style</button>
+  <button class="opt-btn" onclick="showOption('c')">C: Hybrid</button>
+</div>
+
+<div id="desc-a" class="option-desc active">
+  <strong>Option A (current spec):</strong> Live data dashboard with triage filters, agent pool, and budget gauge. Functional but feels like a control panel, not a navigation experience.
+</div>
+<div id="desc-b" class="option-desc">
+  <strong>Option B:</strong> Claude/ChatGPT-style sidebar. "+ New Goal" at top, searchable goal list, triage filter pills, fleet summary strip, user menu at bottom. Goals are the primary objects, like conversations.
+</div>
+<div id="desc-c" class="option-desc">
+  <strong>Option C:</strong> Hybrid. Quick stat cards at top (agents, attention, budget), triage tabs filter the goal list below, user/settings at bottom. Best of both — live data + browsable goal list.
+</div>
+
+
+<!-- ══════════════════════════════════════════ -->
+<!-- OPTION A: Current Spec — Data Dashboard   -->
+<!-- ══════════════════════════════════════════ -->
+<div id="opt-a" class="concept active">
+  <div class="top-bar">
+    <span class="logo">DevFleet</span>
+    <div class="cmd-k">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      Search...
+      <kbd style="margin-left:auto">&#8984;K</kbd>
+    </div>
+    <div class="top-bar-right">
+      <span class="ws-badge">Workspace Active</span>
+      <div class="avatar">M</div>
+    </div>
+  </div>
+  <div class="shell">
+    <div class="pane1">
+      <div class="section-label">Triage</div>
+      <div class="nav-row active">
+        <span class="label"><span class="dot" style="background:#3b82f6"></span> Active</span>
+        <span class="count">47</span>
+      </div>
+      <div class="nav-row">
+        <span class="label"><span class="dot" style="background:#f59e0b"></span> Needs Attention</span>
+        <span class="count warn">3</span>
+      </div>
+      <div class="nav-row">
+        <span class="label"><span class="dot" style="background:#a855f7"></span> In Review</span>
+        <span class="count">8</span>
+      </div>
+      <div class="nav-row">
+        <span class="label"><span class="dot" style="background:#22c55e"></span> Completed Today</span>
+        <span class="count ok">12</span>
+      </div>
+
+      <div class="section-label">Agents</div>
+      <div class="nav-row">
+        <span class="label"><span class="dot" style="background:#22c55e"></span> Busy</span>
+        <span class="count">4</span>
+      </div>
+      <div class="nav-row">
+        <span class="label"><span class="dot" style="background:#a1a1aa"></span> Idle</span>
+        <span class="count">2</span>
+      </div>
+      <div class="nav-row">
+        <span class="label"><span class="dot" style="background:#ef4444"></span> Blocked</span>
+        <span class="count warn">1</span>
+      </div>
+
+      <div class="budget-gauge">
+        <div class="budget-label">Session Spend</div>
+        <div class="budget-val">$42.10</div>
+        <div class="budget-bar"><div class="budget-bar-fill" style="width:42%"></div></div>
+      </div>
+
+      <div class="more-section">
+        <div class="more-toggle">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+          More
+        </div>
+      </div>
+    </div>
+
+    <div class="pane2">
+      <div class="floor-header">
+        <span class="floor-title">Active Floor</span>
+      </div>
+      <div class="goal-row">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#50</span>
+        <span class="gr-title">Add OAuth2 support for GitHub and Google</span>
+        <div class="gr-bar"><div class="seg" style="width:25%;background:#22c55e"></div><div class="seg" style="width:35%;background:#3b82f6"></div><div class="seg" style="width:15%;background:#a855f7"></div></div>
+        <span class="gr-count">4/6</span>
+        <span class="gr-badge badge-active">Active</span>
+      </div>
+      <div class="goal-row warn">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#48</span>
+        <span class="gr-title">Migrate user sessions to Redis</span>
+        <div class="gr-bar"><div class="seg" style="width:40%;background:#22c55e"></div><div class="seg" style="width:20%;background:#3b82f6"></div></div>
+        <span class="gr-count">3/5</span>
+        <span class="gr-badge badge-warn">Blocked</span>
+      </div>
+      <div class="goal-row">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#47</span>
+        <span class="gr-title">Refactor logging to structured JSON format</span>
+        <div class="gr-bar"><div class="seg" style="width:60%;background:#22c55e"></div><div class="seg" style="width:20%;background:#a855f7"></div></div>
+        <span class="gr-count">5/7</span>
+        <span class="gr-badge badge-review">Review</span>
+      </div>
+      <div class="goal-row" style="opacity:0.6">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#45</span>
+        <span class="gr-title">Add rate limiting to public API endpoints</span>
+        <div class="gr-bar"><div class="seg" style="width:100%;background:#22c55e"></div></div>
+        <span class="gr-count">4/4</span>
+        <span class="gr-badge" style="background:#dcfce7;color:#166534">Done</span>
+      </div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span class="status-dot"></span>
+    <span>SSE connected</span>
+    <span style="color:#d4d4d8">|</span>
+    <span>47 active &middot; <span style="color:#d97706">3 blocked</span> &middot; 7 agents &middot; $42.10</span>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════ -->
+<!-- OPTION B: Claude/ChatGPT-Style Sidebar    -->
+<!-- ══════════════════════════════════════════ -->
+<div id="opt-b" class="concept">
+  <div class="top-bar">
+    <span class="logo">DevFleet</span>
+    <div class="cmd-k">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      Search...
+      <kbd style="margin-left:auto">&#8984;K</kbd>
+    </div>
+    <div class="top-bar-right">
+      <span class="ws-badge">Workspace Active</span>
+    </div>
+  </div>
+  <div class="shell">
+    <div class="pane1" style="position:relative">
+
+      <!-- Top: New Goal + Search -->
+      <div class="sidebar-top">
+        <button class="new-goal-btn">
+          <span class="plus">+</span>
+          New Goal
+          <kbd>&#8984;N</kbd>
+        </button>
+        <div class="sidebar-search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          Search goals...
+        </div>
+      </div>
+
+      <!-- Triage filter pills -->
+      <div class="triage-bar">
+        <button class="triage-pill active">
+          All <span class="pill-count">47</span>
+        </button>
+        <button class="triage-pill">
+          <span class="pill-dot" style="background:#f59e0b"></span> <span class="pill-count">3</span>
+        </button>
+        <button class="triage-pill">
+          <span class="pill-dot" style="background:#a855f7"></span> <span class="pill-count">8</span>
+        </button>
+        <button class="triage-pill">
+          <span class="pill-dot" style="background:#22c55e"></span> <span class="pill-count">12</span>
+        </button>
+      </div>
+
+      <!-- Goal list -->
+      <div class="goal-list">
+        <div class="goal-list-label">Active</div>
+
+        <div class="sidebar-goal active">
+          <span class="sg-dot" style="background:#3b82f6"></span>
+          <div class="sg-content">
+            <div class="sg-title">Add OAuth2 support for GitHub and Google</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:25%;background:#22c55e"></div><div class="seg" style="width:35%;background:#3b82f6"></div><div class="seg" style="width:15%;background:#a855f7"></div></div>
+              <span class="sg-count">4/6</span>
+              <span>12s</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-goal">
+          <span class="sg-dot" style="background:#f59e0b"></span>
+          <div class="sg-content">
+            <div class="sg-title">Migrate user sessions to Redis</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:40%;background:#22c55e"></div><div class="seg" style="width:20%;background:#3b82f6"></div></div>
+              <span class="sg-count">3/5</span>
+              <span>45s</span>
+            </div>
+          </div>
+          <span class="sg-badge sg-badge-warn">!</span>
+        </div>
+
+        <div class="sidebar-goal">
+          <span class="sg-dot" style="background:#a855f7"></span>
+          <div class="sg-content">
+            <div class="sg-title">Refactor logging to structured JSON</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:60%;background:#22c55e"></div><div class="seg" style="width:20%;background:#a855f7"></div></div>
+              <span class="sg-count">5/7</span>
+              <span>1m</span>
+            </div>
+          </div>
+          <span class="sg-badge sg-badge-review">R</span>
+        </div>
+
+        <div class="sidebar-goal">
+          <span class="sg-dot" style="background:#3b82f6"></span>
+          <div class="sg-content">
+            <div class="sg-title">Implement WebSocket connection pooling</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:15%;background:#22c55e"></div><div class="seg" style="width:45%;background:#3b82f6"></div></div>
+              <span class="sg-count">2/6</span>
+              <span>30s</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-goal" style="opacity:0.5">
+          <span class="sg-dot" style="background:#22c55e"></span>
+          <div class="sg-content">
+            <div class="sg-title">Add rate limiting to public API</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:100%;background:#22c55e"></div></div>
+              <span class="sg-count">4/4</span>
+              <span>8m</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-goal" style="opacity:0.5">
+          <span class="sg-dot" style="background:#22c55e"></span>
+          <div class="sg-content">
+            <div class="sg-title">Fix CORS headers for API gateway</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:100%;background:#22c55e"></div></div>
+              <span class="sg-count">2/2</span>
+              <span>15m</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-goal" style="opacity:0.5">
+          <span class="sg-dot" style="background:#22c55e"></span>
+          <div class="sg-content">
+            <div class="sg-title">Update TypeScript to v5.7</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:100%;background:#22c55e"></div></div>
+              <span class="sg-count">3/3</span>
+              <span>22m</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fleet summary strip -->
+      <div class="fleet-strip">
+        <div class="fleet-stat">
+          <span class="fs-dot" style="background:#22c55e"></span>
+          <span class="fs-val">4</span>/<span>7</span> agents
+        </div>
+        <div class="fleet-stat">
+          <span style="color:#a1a1aa">$</span><span class="fs-val">42.10</span>
+        </div>
+      </div>
+
+      <!-- Bottom section -->
+      <div class="sidebar-bottom">
+        <div class="sidebar-action">
+          <span class="sa-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          </span>
+          Workspace Settings
+        </div>
+        <div class="sidebar-action">
+          <span class="sa-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </span>
+          Customize Fleet
+        </div>
+
+        <div class="user-row" onclick="document.querySelector('#opt-b .user-popup').classList.toggle('show')">
+          <div class="user-avatar">M</div>
+          <div class="user-info">
+            <div class="user-name">MevApps</div>
+            <div class="user-plan">Pro Plan</div>
+          </div>
+          <span class="user-dots">&middot;&middot;&middot;</span>
+        </div>
+      </div>
+
+      <!-- User popup -->
+      <div class="user-popup">
+        <div class="popup-item">
+          <span class="pi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+          Profile
+        </div>
+        <div class="popup-item">
+          <span class="pi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+          API Keys
+        </div>
+        <div class="popup-item">
+          <span class="pi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg></span>
+          Financials
+        </div>
+        <div class="popup-item">
+          <span class="pi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
+          Performance
+        </div>
+        <div class="popup-divider"></div>
+        <div class="popup-item danger">
+          <span class="pi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></span>
+          Stop Workspace
+        </div>
+      </div>
+    </div>
+
+    <div class="pane2">
+      <div class="floor-header">
+        <span class="floor-title">Add OAuth2 support for GitHub and Google</span>
+      </div>
+      <div class="goal-row">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#50</span>
+        <span class="gr-title">Add OAuth2 support for GitHub and Google</span>
+        <div class="gr-bar"><div class="seg" style="width:25%;background:#22c55e"></div><div class="seg" style="width:35%;background:#3b82f6"></div><div class="seg" style="width:15%;background:#a855f7"></div></div>
+        <span class="gr-count">4/6</span>
+        <span class="gr-badge badge-active">Active</span>
+      </div>
+      <div class="goal-row warn">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#48</span>
+        <span class="gr-title">Migrate user sessions to Redis</span>
+        <div class="gr-bar"><div class="seg" style="width:40%;background:#22c55e"></div><div class="seg" style="width:20%;background:#3b82f6"></div></div>
+        <span class="gr-count">3/5</span>
+        <span class="gr-badge badge-warn">Blocked</span>
+      </div>
+      <div class="goal-row">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#47</span>
+        <span class="gr-title">Refactor logging to structured JSON format</span>
+        <div class="gr-bar"><div class="seg" style="width:60%;background:#22c55e"></div><div class="seg" style="width:20%;background:#a855f7"></div></div>
+        <span class="gr-count">5/7</span>
+        <span class="gr-badge badge-review">Review</span>
+      </div>
+      <div class="goal-row" style="opacity:0.6">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#45</span>
+        <span class="gr-title">Add rate limiting to public API endpoints</span>
+        <div class="gr-bar"><div class="seg" style="width:100%;background:#22c55e"></div></div>
+        <span class="gr-count">4/4</span>
+        <span class="gr-badge" style="background:#dcfce7;color:#166534">Done</span>
+      </div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span class="status-dot"></span>
+    <span>SSE connected</span>
+    <span style="color:#d4d4d8">|</span>
+    <span>47 active &middot; <span style="color:#d97706">3 blocked</span> &middot; 7 agents &middot; $42.10</span>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════ -->
+<!-- OPTION C: Hybrid                          -->
+<!-- ══════════════════════════════════════════ -->
+<div id="opt-c" class="concept">
+  <div class="top-bar">
+    <span class="logo">DevFleet</span>
+    <div class="cmd-k">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      Search...
+      <kbd style="margin-left:auto">&#8984;K</kbd>
+    </div>
+    <div class="top-bar-right">
+      <span class="ws-badge">Workspace Active</span>
+    </div>
+  </div>
+  <div class="shell">
+    <div class="pane1">
+      <div class="sidebar-top">
+        <button class="new-goal-btn">
+          <span class="plus">+</span>
+          New Goal
+        </button>
+      </div>
+
+      <!-- Quick stats -->
+      <div class="quick-stats">
+        <div class="qs-card">
+          <div class="qs-val">4<span style="font-size:11px;color:#a1a1aa;font-weight:400">/7</span></div>
+          <div class="qs-label">Agents</div>
+        </div>
+        <div class="qs-card">
+          <div class="qs-val warn">3</div>
+          <div class="qs-label">Attention</div>
+        </div>
+        <div class="qs-card">
+          <div class="qs-val ok">$42</div>
+          <div class="qs-label">Spent</div>
+        </div>
+      </div>
+
+      <!-- Triage tabs -->
+      <div class="triage-tabs">
+        <div class="triage-tab active">All (47)</div>
+        <div class="triage-tab">Attn (3)</div>
+        <div class="triage-tab">Review (8)</div>
+        <div class="triage-tab">Done (12)</div>
+      </div>
+
+      <!-- Goal list -->
+      <div class="goal-list">
+        <div class="sidebar-goal active">
+          <span class="sg-dot" style="background:#3b82f6"></span>
+          <div class="sg-content">
+            <div class="sg-title">Add OAuth2 support for GitHub and Google</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:25%;background:#22c55e"></div><div class="seg" style="width:35%;background:#3b82f6"></div><div class="seg" style="width:15%;background:#a855f7"></div></div>
+              <span class="sg-count">4/6</span>
+              <span>12s</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-goal">
+          <span class="sg-dot" style="background:#f59e0b"></span>
+          <div class="sg-content">
+            <div class="sg-title">Migrate user sessions to Redis</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:40%;background:#22c55e"></div><div class="seg" style="width:20%;background:#3b82f6"></div></div>
+              <span class="sg-count">3/5</span>
+              <span>45s</span>
+            </div>
+          </div>
+          <span class="sg-badge sg-badge-warn">!</span>
+        </div>
+
+        <div class="sidebar-goal">
+          <span class="sg-dot" style="background:#a855f7"></span>
+          <div class="sg-content">
+            <div class="sg-title">Refactor logging to structured JSON</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:60%;background:#22c55e"></div><div class="seg" style="width:20%;background:#a855f7"></div></div>
+              <span class="sg-count">5/7</span>
+              <span>1m</span>
+            </div>
+          </div>
+          <span class="sg-badge sg-badge-review">R</span>
+        </div>
+
+        <div class="sidebar-goal">
+          <span class="sg-dot" style="background:#3b82f6"></span>
+          <div class="sg-content">
+            <div class="sg-title">Implement WebSocket connection pooling</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:15%;background:#22c55e"></div><div class="seg" style="width:45%;background:#3b82f6"></div></div>
+              <span class="sg-count">2/6</span>
+              <span>30s</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-goal" style="opacity:0.5">
+          <span class="sg-dot" style="background:#22c55e"></span>
+          <div class="sg-content">
+            <div class="sg-title">Add rate limiting to public API</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:100%;background:#22c55e"></div></div>
+              <span class="sg-count">4/4</span>
+              <span>8m</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-goal" style="opacity:0.5">
+          <span class="sg-dot" style="background:#22c55e"></span>
+          <div class="sg-content">
+            <div class="sg-title">Fix CORS headers for API gateway</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:100%;background:#22c55e"></div></div>
+              <span class="sg-count">2/2</span>
+              <span>15m</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom -->
+      <div class="sidebar-bottom">
+        <div class="sidebar-action">
+          <span class="sa-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span>
+          Settings
+        </div>
+        <div class="sidebar-action">
+          <span class="sa-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
+          Analytics
+        </div>
+        <div class="user-row">
+          <div class="user-avatar">M</div>
+          <div class="user-info">
+            <div class="user-name">MevApps</div>
+            <div class="user-plan">$42.10 / $100.00</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pane2">
+      <div class="floor-header">
+        <span class="floor-title">Active Floor</span>
+      </div>
+      <div class="goal-row">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#50</span>
+        <span class="gr-title">Add OAuth2 support for GitHub and Google</span>
+        <div class="gr-bar"><div class="seg" style="width:25%;background:#22c55e"></div><div class="seg" style="width:35%;background:#3b82f6"></div><div class="seg" style="width:15%;background:#a855f7"></div></div>
+        <span class="gr-count">4/6</span>
+        <span class="gr-badge badge-active">Active</span>
+      </div>
+      <div class="goal-row warn">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#48</span>
+        <span class="gr-title">Migrate user sessions to Redis</span>
+        <div class="gr-bar"><div class="seg" style="width:40%;background:#22c55e"></div><div class="seg" style="width:20%;background:#3b82f6"></div></div>
+        <span class="gr-count">3/5</span>
+        <span class="gr-badge badge-warn">Blocked</span>
+      </div>
+      <div class="goal-row">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#47</span>
+        <span class="gr-title">Refactor logging to structured JSON format</span>
+        <div class="gr-bar"><div class="seg" style="width:60%;background:#22c55e"></div><div class="seg" style="width:20%;background:#a855f7"></div></div>
+        <span class="gr-count">5/7</span>
+        <span class="gr-badge badge-review">Review</span>
+      </div>
+      <div class="goal-row" style="opacity:0.6">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#45</span>
+        <span class="gr-title">Add rate limiting to public API endpoints</span>
+        <div class="gr-bar"><div class="seg" style="width:100%;background:#22c55e"></div></div>
+        <span class="gr-count">4/4</span>
+        <span class="gr-badge" style="background:#dcfce7;color:#166534">Done</span>
+      </div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span class="status-dot"></span>
+    <span>SSE connected</span>
+    <span style="color:#d4d4d8">|</span>
+    <span>47 active &middot; <span style="color:#d97706">3 blocked</span> &middot; 7 agents &middot; $42.10</span>
+  </div>
+</div>
+
+
+<!-- Notes -->
+<div class="note-area">
+  <div class="note active" id="note-a">
+    <span class="pro">Pro:</span> Maximally functional — every metric visible at a glance. Triage filters are prominent.<br>
+    <span class="con">Con:</span> Feels like a control panel, not a product. No goal browsing — you can only filter the floor, not navigate to a specific goal from the sidebar. No user section. "More" is a junk drawer.<br>
+    <span class="key">Key gap:</span> You can't click a goal in the sidebar to jump to it — the sidebar only shows counts.
+  </div>
+  <div class="note" id="note-b">
+    <span class="pro">Pro:</span> Familiar, polished pattern. Goals are first-class objects you can browse, search, and click. User menu with popup for settings/analytics. "+ New Goal" is prominent. Fleet stats in a compact strip.<br>
+    <span class="con">Con:</span> Agent/budget data is compressed into a tiny strip. Triage filter pills are small — less visually prominent than Option A's full rows.<br>
+    <span class="key">Key win:</span> Clicking a goal in the sidebar selects it in the floor AND opens the Inspector. The sidebar becomes both navigation and filtering. Click the <strong>user row</strong> at the bottom to see the popup menu.
+  </div>
+  <div class="note" id="note-c">
+    <span class="pro">Pro:</span> Quick stat cards give at-a-glance fleet health. Triage tabs filter the goal list below. Goal browsing + data dashboard in one panel. Analytics/Settings as sidebar actions.<br>
+    <span class="con">Con:</span> Busier than B — stat cards + tabs + goals + actions is a lot in 260px. The triage tabs compete with stat cards for attention.<br>
+    <span class="key">Key tradeoff:</span> More information density than B, but slightly less elegant. Good if you want fleet stats always visible without the status bar.
+  </div>
+</div>
+
+
+<script>
+function showOption(id) {
+  document.querySelectorAll('.concept').forEach(c => c.classList.remove('active'));
+  document.getElementById('opt-' + id).classList.add('active');
+  document.querySelectorAll('.option-desc').forEach(d => d.classList.remove('active'));
+  document.getElementById('desc-' + id).classList.add('active');
+  document.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.querySelectorAll('.note').forEach(n => n.classList.remove('active'));
+  document.getElementById('note-' + id).classList.add('active');
+}
+</script>
+</body>
+</html>

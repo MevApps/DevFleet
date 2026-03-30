@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DevFleet — Goal Focus View</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #fafafa; color: #18181b; }
+
+  .layout { display: flex; height: 100vh; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 260px; flex-shrink: 0; background: #f9fafb; border-right: 1px solid #e4e4e7;
+    display: flex; flex-direction: column;
+  }
+  .sidebar-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 14px 10px;
+  }
+  .sidebar-logo {
+    font-weight: 700; font-size: 15px; color: #18181b;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .logo-icon {
+    width: 22px; height: 22px; border-radius: 6px; background: #18181b;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logo-icon svg { width: 14px; height: 14px; }
+  .collapse-btn {
+    width: 28px; height: 28px; border-radius: 6px; border: none;
+    background: transparent; color: #a1a1aa; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .collapse-btn:hover { background: #e4e4e7; }
+
+  .sidebar-top { padding: 0 10px; display: flex; flex-direction: column; gap: 6px; }
+  .new-goal-btn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border-radius: 10px; border: 1px solid #e4e4e7;
+    background: #fff; color: #18181b; font-size: 13px; font-weight: 600;
+    cursor: pointer; font-family: 'Inter', sans-serif; width: 100%;
+  }
+  .new-goal-btn:hover { background: #f4f4f5; }
+  .new-goal-btn .plus { font-size: 18px; color: #71717a; }
+  .new-goal-btn kbd { margin-left: auto; font-size: 10px; padding: 1px 5px; border-radius: 4px; background: #f4f4f5; color: #a1a1aa; font-family: 'Inter', sans-serif; border: 1px solid #e4e4e7; }
+  .sidebar-search {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 12px; border-radius: 10px; border: 1px solid #e4e4e7;
+    background: #fff; color: #a1a1aa; font-size: 13px; cursor: pointer;
+  }
+  .sidebar-search:hover { border-color: #d4d4d8; }
+
+  .sidebar-features { padding: 10px 8px 0; display: flex; flex-direction: column; gap: 1px; }
+  .sidebar-action {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; border-radius: 8px; cursor: pointer;
+    font-size: 13px; color: #52525b;
+  }
+  .sidebar-action:hover { background: #f0f0f2; }
+  .sidebar-action .sa-icon { color: #a1a1aa; display: flex; width: 18px; justify-content: center; }
+  .sidebar-action .sa-badge { margin-left: auto; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+
+  .sidebar-divider { height: 1px; background: #e4e4e7; margin: 8px 12px; }
+  .recents-label { font-size: 10px; font-weight: 600; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 18px 6px; }
+
+  .goal-list { flex: 1; overflow-y: auto; padding: 0 8px; }
+  .sidebar-goal {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
+    transition: background 0.1s; margin-bottom: 1px;
+  }
+  .sidebar-goal:hover { background: #f0f0f2; }
+  .sidebar-goal.active { background: #ede9fe; }
+  .sidebar-goal .sg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .sidebar-goal .sg-content { flex: 1; min-width: 0; }
+  .sidebar-goal .sg-title { font-size: 13px; font-weight: 500; color: #18181b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sidebar-goal.active .sg-title { color: #6d28d9; font-weight: 600; }
+  .sidebar-goal .sg-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #a1a1aa; margin-top: 1px; }
+  .sidebar-goal .sg-mini-bar { width: 40px; height: 3px; border-radius: 2px; background: #e4e4e7; overflow: hidden; display: flex; }
+  .sidebar-goal .sg-mini-bar .seg { height: 100%; }
+  .sidebar-goal .sg-count { font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+  .sidebar-goal .sg-badge { padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 700; margin-left: auto; flex-shrink: 0; }
+  .sg-badge-warn { background: #fef3c7; color: #b45309; }
+  .sg-badge-review { background: #f3e8ff; color: #7c3aed; }
+
+  .sidebar-bottom { border-top: 1px solid #e4e4e7; padding: 8px 8px 12px; }
+  .user-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+  .user-row:hover { background: #f0f0f2; }
+  .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: #a78bfa; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #fff; flex-shrink: 0; }
+  .user-info { flex: 1; }
+  .user-name { font-size: 13px; font-weight: 600; color: #18181b; }
+  .user-plan { font-size: 11px; color: #a1a1aa; }
+
+  /* ── Main ── */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .top-bar {
+    display: flex; align-items: center; padding: 0 20px; height: 48px;
+    background: #fff; border-bottom: 1px solid #e4e4e7; flex-shrink: 0;
+  }
+  .fleet-chips { display: flex; gap: 8px; }
+  .fleet-chip {
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 6px; background: #f4f4f5;
+    font-size: 12px; color: #52525b; font-weight: 500;
+  }
+  .fleet-chip .fc-val { font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+  .fleet-chip .fc-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .fleet-chip.warn { background: #fef3c7; color: #92400e; }
+  .top-bar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .ws-badge { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; background: #dcfce7; color: #166534; }
+  .alert-btn {
+    position: relative; width: 32px; height: 32px; border-radius: 8px; border: 1px solid #e4e4e7;
+    background: #fff; color: #71717a; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ── Content area: Floor + Inspector ── */
+  .content-area { display: flex; flex: 1; overflow: hidden; }
+
+  /* Floor */
+  .pane2 { flex: 1; overflow-y: auto; background: #fafafa; padding: 20px 24px; }
+
+  /* Goal detail header */
+  .goal-detail-header {
+    display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px;
+    padding-bottom: 16px; border-bottom: 1px solid #e4e4e7;
+  }
+  .gdh-back {
+    width: 32px; height: 32px; border-radius: 8px; border: 1px solid #e4e4e7;
+    background: #fff; color: #71717a; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;
+  }
+  .gdh-back:hover { background: #f4f4f5; }
+  .gdh-main { flex: 1; }
+  .gdh-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .gdh-id { font-size: 13px; color: #a1a1aa; font-weight: 500; font-family: 'JetBrains Mono', monospace; }
+  .gdh-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .gdh-title { font-size: 20px; font-weight: 700; color: #18181b; line-height: 1.3; }
+  .gdh-meta { display: flex; align-items: center; gap: 16px; margin-top: 8px; font-size: 13px; color: #71717a; }
+  .gdh-meta .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* Phase progress bar */
+  .goal-phase-bar-lg {
+    height: 8px; border-radius: 4px; background: #e4e4e7; overflow: hidden;
+    display: flex; margin-top: 12px;
+  }
+  .goal-phase-bar-lg .seg { height: 100%; }
+
+  /* Stats row */
+  .goal-stats {
+    display: flex; gap: 12px; margin-bottom: 20px;
+  }
+  .goal-stat {
+    flex: 1; padding: 14px 16px; border-radius: 10px; background: #fff;
+    border: 1px solid #e4e4e7;
+  }
+  .goal-stat .gs-label { font-size: 11px; font-weight: 600; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.04em; }
+  .goal-stat .gs-val { font-size: 20px; font-weight: 700; color: #18181b; margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+  .goal-stat .gs-sub { font-size: 11px; color: #a1a1aa; margin-top: 2px; }
+
+  /* Phase lanes */
+  .phase-lanes-section { margin-top: 4px; }
+  .phase-lanes-label { font-size: 13px; font-weight: 700; color: #18181b; margin-bottom: 12px; }
+  .phase-lanes { display: flex; gap: 12px; }
+  .phase-lane { flex: 1; min-width: 0; }
+  .phase-lane-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; background: #fff; border: 1px solid #e4e4e7;
+    border-radius: 10px 10px 0 0; font-size: 11px; font-weight: 600; color: #52525b;
+    text-transform: uppercase; letter-spacing: 0.03em;
+  }
+  .phase-lane-header .plh-dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
+  .phase-lane-header .plh-count { background: #f4f4f5; padding: 2px 7px; border-radius: 8px; font-size: 10px; color: #a1a1aa; }
+  .phase-lane-body {
+    background: #f4f4f5; border: 1px solid #e4e4e7; border-top: none;
+    border-radius: 0 0 10px 10px; padding: 8px; min-height: 120px;
+  }
+
+  .task-card {
+    background: #fff; border: 1px solid #e4e4e7; border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s;
+  }
+  .task-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-color: #d4d4d8; }
+  .task-card.selected { border-color: #8b5cf6; box-shadow: 0 0 0 2px rgba(139,92,246,0.12); }
+  .task-card.error { border-left: 3px solid #ef4444; }
+  .task-card.done { opacity: 0.5; }
+  .task-card .tc-title { font-size: 13px; font-weight: 500; color: #18181b; }
+  .task-card .tc-title.error-text { color: #dc2626; }
+  .task-card .tc-meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; color: #a1a1aa; }
+  .task-card .agent-tag {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 1px 6px; border-radius: 4px; background: #f4f4f5;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #52525b;
+  }
+  .task-card .agent-tag.busy { background: #dbeafe; color: #1d4ed8; }
+  .task-card .tc-progress { height: 3px; border-radius: 2px; background: #e4e4e7; margin-top: 6px; overflow: hidden; }
+  .task-card .tc-progress-fill { height: 100%; border-radius: 2px; }
+
+  .phase-empty { font-size: 12px; color: #d4d4d8; text-align: center; padding: 16px 0; }
+
+  /* Phase arrow */
+  .phase-arrow {
+    display: flex; align-items: center; justify-content: center;
+    width: 20px; flex-shrink: 0; color: #d4d4d8; font-size: 16px;
+    align-self: flex-start; margin-top: 40px;
+  }
+
+  /* ── Inspector ── */
+  .inspector {
+    width: 380px; flex-shrink: 0; background: #fff; border-left: 1px solid #e4e4e7;
+    display: flex; flex-direction: column; overflow-y: auto;
+  }
+  .insp-accent { height: 3px; background: #a855f7; }
+  .insp-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 1px solid #e4e4e7;
+  }
+  .insp-header .entity-type { font-size: 11px; font-weight: 600; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.04em; }
+  .insp-header-right { display: flex; align-items: center; gap: 6px; }
+  .insp-btn-icon {
+    width: 28px; height: 28px; border-radius: 6px; border: none;
+    background: transparent; color: #a1a1aa; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .insp-btn-icon:hover { background: #f4f4f5; }
+  .insp-btn-icon.pinned { color: #8b5cf6; background: #f5f3ff; }
+  .insp-body { padding: 16px; flex: 1; }
+  .insp-title { font-size: 15px; font-weight: 700; color: #18181b; margin-bottom: 12px; }
+
+  .insp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .insp-stat { padding: 10px 12px; border-radius: 8px; background: #f4f4f5; }
+  .insp-stat .is-label { font-size: 11px; color: #71717a; }
+  .insp-stat .is-val { font-size: 15px; font-weight: 700; color: #18181b; margin-top: 2px; }
+
+  .insp-tabs { display: flex; gap: 0; border-bottom: 1px solid #e4e4e7; margin-bottom: 12px; }
+  .insp-tab {
+    padding: 8px 14px; font-size: 12px; font-weight: 500; color: #a1a1aa; cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .insp-tab:hover { color: #3f3f46; }
+  .insp-tab.active { color: #18181b; border-bottom-color: #8b5cf6; }
+
+  /* Diff */
+  .diff-block {
+    border-radius: 8px; overflow: hidden; border: 1px solid #e4e4e7;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  }
+  .diff-header { padding: 8px 12px; background: #f4f4f5; font-size: 11px; color: #71717a; display: flex; justify-content: space-between; }
+  .diff-line { padding: 2px 12px; }
+  .diff-add { background: #dcfce7; color: #166534; }
+  .diff-del { background: #fee2e2; color: #991b1b; }
+  .diff-ctx { background: #fff; color: #52525b; }
+
+  .insp-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .insp-action-btn {
+    flex: 1; padding: 8px 0; border-radius: 8px; border: 1px solid #e4e4e7;
+    font-size: 13px; font-weight: 600; cursor: pointer; text-align: center;
+    font-family: 'Inter', sans-serif;
+  }
+  .insp-action-btn.primary { background: #18181b; color: #fff; border-color: #18181b; }
+  .insp-action-btn.danger { background: #fff; color: #dc2626; border-color: #fca5a5; }
+  .insp-action-btn.secondary { background: #fff; color: #3f3f46; }
+
+  /* Activity */
+  .event-item { display: flex; gap: 10px; padding: 8px 0; font-size: 12px; border-bottom: 1px solid #f4f4f5; }
+  .event-dot-col { display: flex; flex-direction: column; align-items: center; width: 16px; padding-top: 4px; }
+  .event-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .event-line { width: 1px; flex: 1; background: #e4e4e7; margin-top: 4px; }
+  .event-text { color: #3f3f46; }
+  .event-time { color: #a1a1aa; font-family: 'JetBrains Mono', monospace; font-size: 11px; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <!-- ── Sidebar ── -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <div class="logo-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
+        DevFleet
+      </div>
+      <button class="collapse-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 19l-7-7 7-7"/><path d="M18 19l-7-7 7-7"/></svg>
+      </button>
+    </div>
+
+    <div class="sidebar-top">
+      <button class="new-goal-btn"><span class="plus">+</span> New Goal <kbd>&#8984;N</kbd></button>
+      <div class="sidebar-search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        Search goals...
+      </div>
+    </div>
+
+    <div class="sidebar-features">
+      <div class="sidebar-action">
+        <span class="sa-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+        Settings
+      </div>
+      <div class="sidebar-action">
+        <span class="sa-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
+        Analytics
+        <span class="sa-badge" style="background:#f3e8ff;color:#7c3aed">3</span>
+      </div>
+      <div class="sidebar-action">
+        <span class="sa-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span>
+        Health
+      </div>
+    </div>
+
+    <div class="sidebar-divider"></div>
+    <div class="recents-label">Recents</div>
+
+    <div class="goal-list">
+      <div class="sidebar-goal active">
+        <span class="sg-dot" style="background:#3b82f6"></span>
+        <div class="sg-content">
+          <div class="sg-title">Add OAuth2 support for GitHub and Google</div>
+          <div class="sg-meta">
+            <div class="sg-mini-bar"><div class="seg" style="width:25%;background:#22c55e"></div><div class="seg" style="width:35%;background:#3b82f6"></div><div class="seg" style="width:15%;background:#a855f7"></div></div>
+            <span class="sg-count">4/6</span> <span>12s</span>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-goal">
+        <span class="sg-dot" style="background:#f59e0b"></span>
+        <div class="sg-content">
+          <div class="sg-title">Migrate user sessions to Redis</div>
+          <div class="sg-meta"><div class="sg-mini-bar"><div class="seg" style="width:40%;background:#22c55e"></div><div class="seg" style="width:20%;background:#3b82f6"></div></div><span class="sg-count">3/5</span> <span>45s</span></div>
+        </div>
+        <span class="sg-badge sg-badge-warn">!</span>
+      </div>
+      <div class="sidebar-goal">
+        <span class="sg-dot" style="background:#a855f7"></span>
+        <div class="sg-content">
+          <div class="sg-title">Refactor logging to structured JSON</div>
+          <div class="sg-meta"><div class="sg-mini-bar"><div class="seg" style="width:60%;background:#22c55e"></div><div class="seg" style="width:20%;background:#a855f7"></div></div><span class="sg-count">5/7</span> <span>1m</span></div>
+        </div>
+        <span class="sg-badge sg-badge-review">R</span>
+      </div>
+      <div class="sidebar-goal">
+        <span class="sg-dot" style="background:#3b82f6"></span>
+        <div class="sg-content">
+          <div class="sg-title">Implement WebSocket pooling</div>
+          <div class="sg-meta"><div class="sg-mini-bar"><div class="seg" style="width:15%;background:#22c55e"></div><div class="seg" style="width:45%;background:#3b82f6"></div></div><span class="sg-count">2/6</span> <span>30s</span></div>
+        </div>
+      </div>
+      <div class="sidebar-goal" style="opacity:0.5">
+        <span class="sg-dot" style="background:#22c55e"></span>
+        <div class="sg-content">
+          <div class="sg-title">Add rate limiting to public API</div>
+          <div class="sg-meta"><div class="sg-mini-bar"><div class="seg" style="width:100%;background:#22c55e"></div></div><span class="sg-count">4/4</span> <span>8m</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-bottom">
+      <div class="user-row">
+        <div class="user-avatar">M</div>
+        <div class="user-info"><div class="user-name">MevApps</div><div class="user-plan">$42.10 / $100.00</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Main ── -->
+  <div class="main">
+    <div class="top-bar">
+      <div class="fleet-chips">
+        <div class="fleet-chip"><span class="fc-dot" style="background:#22c55e"></span> <span class="fc-val">4</span>/7 agents</div>
+        <div class="fleet-chip warn"><span class="fc-dot" style="background:#d97706"></span> <span class="fc-val">3</span> attention</div>
+        <div class="fleet-chip"><span class="fc-val">$42.10</span> spent</div>
+      </div>
+      <div class="top-bar-right">
+        <span class="ws-badge">Workspace Active</span>
+        <button class="alert-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <!-- ── Floor: Goal Focus View ── -->
+      <div class="pane2">
+        <!-- Goal header -->
+        <div class="goal-detail-header">
+          <button class="gdh-back" title="Back to all goals">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div class="gdh-main">
+            <div class="gdh-top">
+              <span class="gdh-id">#50</span>
+              <span class="gdh-badge" style="background:#dbeafe;color:#1d4ed8">Active</span>
+            </div>
+            <div class="gdh-title">Add OAuth2 support for GitHub and Google</div>
+            <div class="gdh-meta">
+              <span>Created <strong>2m ago</strong></span>
+              <span>&middot;</span>
+              <span class="mono">$1.20 / $2.00</span>
+              <span>&middot;</span>
+              <span>4 of 6 tasks</span>
+            </div>
+            <div class="goal-phase-bar-lg">
+              <div class="seg" style="width:17%;background:#22c55e;border-radius:4px 0 0 4px"></div>
+              <div class="seg" style="width:33%;background:#3b82f6"></div>
+              <div class="seg" style="width:17%;background:#a855f7"></div>
+              <div class="seg" style="width:33%;background:#e4e4e7;border-radius:0 4px 4px 0"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="goal-stats">
+          <div class="goal-stat">
+            <div class="gs-label">Tasks</div>
+            <div class="gs-val">4<span style="color:#a1a1aa;font-size:14px">/6</span></div>
+            <div class="gs-sub">2 in progress</div>
+          </div>
+          <div class="goal-stat">
+            <div class="gs-label">Agents</div>
+            <div class="gs-val">2</div>
+            <div class="gs-sub">dev-03, dev-05</div>
+          </div>
+          <div class="goal-stat">
+            <div class="gs-label">Budget</div>
+            <div class="gs-val">$1.20</div>
+            <div class="gs-sub">60% of $2.00</div>
+          </div>
+          <div class="goal-stat">
+            <div class="gs-label">Duration</div>
+            <div class="gs-val">2m</div>
+            <div class="gs-sub">avg 20s/task</div>
+          </div>
+        </div>
+
+        <!-- Phase lanes -->
+        <div class="phase-lanes-section">
+          <div class="phase-lanes-label">Tasks by Phase</div>
+          <div class="phase-lanes">
+            <div class="phase-lane">
+              <div class="phase-lane-header">
+                <div style="display:flex;align-items:center"><span class="plh-dot" style="background:#22c55e"></span> Planning</div>
+                <span class="plh-count">1</span>
+              </div>
+              <div class="phase-lane-body">
+                <div class="task-card done">
+                  <div class="tc-title" style="text-decoration:line-through">Write spec document</div>
+                  <div class="tc-meta"><span class="agent-tag">sup-01</span> &#10003; 2m ago</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="phase-arrow">&#8594;</div>
+
+            <div class="phase-lane">
+              <div class="phase-lane-header">
+                <div style="display:flex;align-items:center"><span class="plh-dot" style="background:#3b82f6"></span> Implementation</div>
+                <span class="plh-count">3</span>
+              </div>
+              <div class="phase-lane-body">
+                <div class="task-card">
+                  <div class="tc-title">Write GitHub OAuth handler</div>
+                  <div class="tc-meta"><span class="agent-tag busy">dev-03</span> 12s ago</div>
+                  <div class="tc-progress"><div class="tc-progress-fill" style="width:65%;background:#3b82f6"></div></div>
+                </div>
+                <div class="task-card">
+                  <div class="tc-title">Write Google OAuth handler</div>
+                  <div class="tc-meta"><span class="agent-tag busy">dev-05</span> 3m ago</div>
+                  <div class="tc-progress"><div class="tc-progress-fill" style="width:30%;background:#3b82f6"></div></div>
+                </div>
+                <div class="task-card">
+                  <div class="tc-title">Add auth middleware</div>
+                  <div class="tc-meta"><span class="agent-tag">queued</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="phase-arrow">&#8594;</div>
+
+            <div class="phase-lane">
+              <div class="phase-lane-header">
+                <div style="display:flex;align-items:center"><span class="plh-dot" style="background:#a855f7"></span> Review</div>
+                <span class="plh-count">1</span>
+              </div>
+              <div class="phase-lane-body">
+                <div class="task-card selected">
+                  <div class="tc-title">Review: spec document</div>
+                  <div class="tc-meta"><span style="color:#7c3aed;font-weight:600">Awaiting YOU</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="phase-arrow">&#8594;</div>
+
+            <div class="phase-lane">
+              <div class="phase-lane-header">
+                <div style="display:flex;align-items:center"><span class="plh-dot" style="background:#22c55e"></span> Done</div>
+                <span class="plh-count">1</span>
+              </div>
+              <div class="phase-lane-body">
+                <div class="task-card done">
+                  <div class="tc-title">Write integration tests</div>
+                  <div class="tc-meta">&#10003; 5m ago</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Inspector: selected task ── -->
+      <div class="inspector">
+        <div class="insp-accent"></div>
+        <div class="insp-header">
+          <span class="entity-type">Task #312 &middot; Review</span>
+          <div class="insp-header-right">
+            <button class="insp-btn-icon pinned" title="Pinned">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+            </button>
+            <button class="insp-btn-icon" title="Close">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="insp-body">
+          <div class="insp-title">Review: spec document</div>
+
+          <div class="insp-grid">
+            <div class="insp-stat"><div class="is-label">Status</div><div class="is-val" style="color:#7c3aed">In Review</div></div>
+            <div class="insp-stat"><div class="is-label">Agent</div><div class="is-val">rev-01</div></div>
+            <div class="insp-stat"><div class="is-label">Budget</div><div class="is-val">$0.12</div></div>
+            <div class="insp-stat"><div class="is-label">Attempt</div><div class="is-val">1/3</div></div>
+          </div>
+
+          <div class="insp-tabs">
+            <div class="insp-tab active">Diff</div>
+            <div class="insp-tab">Artifacts</div>
+            <div class="insp-tab">Activity</div>
+          </div>
+
+          <div class="diff-block">
+            <div class="diff-header"><span>src/auth/oauth.config.ts</span><span>+24 -3</span></div>
+            <div class="diff-line diff-ctx">&nbsp; import { AuthProvider } from './types'</div>
+            <div class="diff-line diff-ctx">&nbsp;</div>
+            <div class="diff-line diff-del">- const providers: string[] = []</div>
+            <div class="diff-line diff-add">+ const providers: AuthProvider[] = [</div>
+            <div class="diff-line diff-add">+   { name: 'github', clientId: env.GITHUB_ID },</div>
+            <div class="diff-line diff-add">+   { name: 'google', clientId: env.GOOGLE_ID },</div>
+            <div class="diff-line diff-add">+ ]</div>
+            <div class="diff-line diff-ctx">&nbsp;</div>
+            <div class="diff-line diff-del">- export function getAuth() { return null }</div>
+            <div class="diff-line diff-add">+ export function getAuth(provider: string) {</div>
+            <div class="diff-line diff-add">+   return providers.find(p =&gt; p.name === provider)</div>
+            <div class="diff-line diff-add">+ }</div>
+          </div>
+
+          <div class="insp-actions">
+            <button class="insp-action-btn primary">Approve &amp; Merge</button>
+            <button class="insp-action-btn danger">Discard</button>
+            <button class="insp-action-btn secondary">Reassign</button>
+          </div>
+
+          <div style="margin-top:16px">
+            <div style="font-size:11px;font-weight:600;color:#a1a1aa;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">Activity</div>
+            <div class="event-item">
+              <div class="event-dot-col"><div class="event-dot" style="background:#a855f7"></div><div class="event-line"></div></div>
+              <div><div class="event-text">Task moved to <strong>review</strong></div><div class="event-time">14:32:12</div></div>
+            </div>
+            <div class="event-item">
+              <div class="event-dot-col"><div class="event-dot" style="background:#3b82f6"></div><div class="event-line"></div></div>
+              <div><div class="event-text"><strong>rev-01</strong> assigned</div><div class="event-time">14:32:10</div></div>
+            </div>
+            <div class="event-item">
+              <div class="event-dot-col"><div class="event-dot" style="background:#22c55e"></div></div>
+              <div><div class="event-text">Spec <strong>completed</strong> by sup-01</div><div class="event-time">14:30:45</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

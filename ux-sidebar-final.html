@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DevFleet — Sidebar Final</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #f4f4f5; color: #18181b; }
+
+  .layout { display: flex; flex-direction: column; height: 100vh; }
+  .shell { display: flex; flex: 1; overflow: hidden; }
+
+  /* Top bar */
+  .top-bar {
+    display: flex; align-items: center; padding: 0 20px; height: 48px;
+    background: #fff; border-bottom: 1px solid #e4e4e7; flex-shrink: 0;
+  }
+  .top-bar .logo { font-weight: 700; font-size: 15px; color: #18181b; }
+  .top-bar .cmd-k {
+    margin-left: 24px; padding: 5px 14px; border-radius: 8px;
+    background: #f4f4f5; border: 1px solid #e4e4e7; font-size: 13px; color: #71717a;
+    display: flex; align-items: center; gap: 8px; width: 240px;
+  }
+  .top-bar .cmd-k kbd { font-size: 11px; padding: 1px 5px; border-radius: 4px; background: #e4e4e7; color: #52525b; font-family: 'Inter', sans-serif; }
+  .top-bar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .ws-badge { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; background: #dcfce7; color: #166534; }
+
+  /* Status bar */
+  .status-bar {
+    display: flex; align-items: center; padding: 0 20px; height: 32px;
+    background: #fff; border-top: 1px solid #e4e4e7; font-size: 12px; gap: 16px;
+    color: #a1a1aa; font-family: 'JetBrains Mono', monospace; flex-shrink: 0;
+  }
+  .status-bar .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; }
+
+  /* ── Pane 1: Sidebar ── */
+  .pane1 {
+    width: 260px; flex-shrink: 0; background: #f9fafb; border-right: 1px solid #e4e4e7;
+    display: flex; flex-direction: column; padding: 0;
+  }
+
+  /* New Goal button */
+  .sidebar-top { padding: 12px 12px 0; display: flex; flex-direction: column; gap: 6px; }
+  .new-goal-btn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-radius: 10px; border: 1px solid #e4e4e7;
+    background: #fff; color: #18181b; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; font-family: 'Inter', sans-serif; width: 100%;
+  }
+  .new-goal-btn:hover { background: #f4f4f5; }
+  .new-goal-btn .plus { font-size: 18px; color: #71717a; }
+  .new-goal-btn kbd { margin-left: auto; font-size: 11px; padding: 1px 5px; border-radius: 4px; background: #f4f4f5; color: #a1a1aa; font-family: 'Inter', sans-serif; border: 1px solid #e4e4e7; }
+
+  /* Search */
+  .sidebar-search {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border-radius: 10px; border: 1px solid #e4e4e7;
+    background: #fff; color: #a1a1aa; font-size: 13px; cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .sidebar-search:hover { border-color: #d4d4d8; }
+  .sidebar-search kbd { margin-left: auto; font-size: 11px; padding: 1px 5px; border-radius: 4px; background: #f4f4f5; color: #a1a1aa; font-family: 'Inter', sans-serif; border: 1px solid #e4e4e7; }
+
+  /* Feature actions (below search, above goals) */
+  .sidebar-features {
+    padding: 8px 8px 0; display: flex; flex-direction: column; gap: 1px;
+  }
+  .sidebar-action {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; border-radius: 8px; cursor: pointer;
+    font-size: 13px; color: #52525b; transition: background 0.1s;
+  }
+  .sidebar-action:hover { background: #f0f0f2; }
+  .sidebar-action .sa-icon { color: #a1a1aa; display: flex; align-items: center; }
+  .sidebar-action .sa-badge {
+    margin-left: auto; padding: 1px 6px; border-radius: 4px;
+    font-size: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Divider */
+  .sidebar-divider { height: 1px; background: #e4e4e7; margin: 6px 12px; }
+
+  /* Quick stats row */
+  .quick-stats {
+    display: flex; gap: 6px; padding: 8px 12px 4px;
+  }
+  .qs-card {
+    flex: 1; padding: 8px; border-radius: 8px; background: #fff; border: 1px solid #e4e4e7;
+    text-align: center; cursor: pointer; transition: all 0.15s;
+  }
+  .qs-card:hover { border-color: #d4d4d8; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+  .qs-card .qs-val { font-size: 16px; font-weight: 700; color: #18181b; font-family: 'JetBrains Mono', monospace; }
+  .qs-card .qs-val.warn { color: #d97706; }
+  .qs-card .qs-val.ok { color: #16a34a; }
+  .qs-card .qs-label { font-size: 9px; font-weight: 600; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+  /* Triage tabs */
+  .triage-tabs {
+    display: flex; border-bottom: 1px solid #e4e4e7; padding: 0 12px; margin-top: 4px;
+  }
+  .triage-tab {
+    flex: 1; padding: 8px 0; font-size: 11px; font-weight: 600; color: #a1a1aa;
+    text-align: center; cursor: pointer; border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .triage-tab:hover { color: #52525b; }
+  .triage-tab.active { color: #18181b; border-bottom-color: #8b5cf6; }
+
+  /* Goal list */
+  .goal-list { flex: 1; overflow-y: auto; padding: 4px 8px; }
+  .sidebar-goal {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
+    transition: background 0.1s; margin-bottom: 2px;
+  }
+  .sidebar-goal:hover { background: #f0f0f2; }
+  .sidebar-goal.active { background: #ede9fe; }
+  .sidebar-goal .sg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .sidebar-goal .sg-content { flex: 1; min-width: 0; }
+  .sidebar-goal .sg-title {
+    font-size: 13px; font-weight: 500; color: #18181b;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sidebar-goal.active .sg-title { color: #6d28d9; font-weight: 600; }
+  .sidebar-goal .sg-meta {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: #a1a1aa; margin-top: 1px;
+  }
+  .sidebar-goal .sg-mini-bar {
+    width: 40px; height: 3px; border-radius: 2px; background: #e4e4e7; overflow: hidden; display: flex;
+  }
+  .sidebar-goal .sg-mini-bar .seg { height: 100%; }
+  .sidebar-goal .sg-count { font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+  .sidebar-goal .sg-badge {
+    padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 700; margin-left: auto; flex-shrink: 0;
+  }
+  .sg-badge-warn { background: #fef3c7; color: #b45309; }
+  .sg-badge-review { background: #f3e8ff; color: #7c3aed; }
+
+  /* Bottom user section */
+  .sidebar-bottom {
+    border-top: 1px solid #e4e4e7;
+    padding: 8px 8px 12px;
+  }
+  .user-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
+    transition: background 0.1s;
+  }
+  .user-row:hover { background: #f0f0f2; }
+  .user-avatar {
+    width: 32px; height: 32px; border-radius: 50%; background: #a78bfa;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; color: #fff; flex-shrink: 0;
+  }
+  .user-info { flex: 1; min-width: 0; }
+  .user-name { font-size: 13px; font-weight: 600; color: #18181b; }
+  .user-plan { font-size: 11px; color: #a1a1aa; }
+  .user-dots { color: #a1a1aa; font-size: 16px; letter-spacing: 2px; }
+
+  /* User popup */
+  .user-popup {
+    position: absolute; bottom: 72px; left: 12px; width: 236px;
+    background: #fff; border: 1px solid #e4e4e7; border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.1); padding: 6px;
+    display: none; z-index: 100;
+  }
+  .user-popup.show { display: block; }
+  .popup-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px; font-size: 13px; color: #3f3f46;
+    cursor: pointer; transition: background 0.1s;
+  }
+  .popup-item:hover { background: #f4f4f5; }
+  .popup-item .pi-icon { color: #a1a1aa; display: flex; }
+  .popup-divider { height: 1px; background: #e4e4e7; margin: 4px 0; }
+  .popup-item.danger { color: #dc2626; }
+  .popup-item.danger .pi-icon { color: #dc2626; }
+
+  /* ── Pane 2 ── */
+  .pane2 { flex: 1; background: #fafafa; padding: 20px 24px; overflow-y: auto; }
+  .floor-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .floor-title { font-size: 16px; font-weight: 700; color: #18181b; }
+  .view-toggle { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid #e4e4e7; }
+  .view-btn {
+    padding: 5px 14px; font-size: 12px; font-weight: 500; border: none; cursor: pointer;
+    background: #fff; color: #71717a; font-family: 'Inter', sans-serif;
+  }
+  .view-btn.active { background: #18181b; color: #fff; }
+
+  .goal-row {
+    background: #fff; border-radius: 12px; border: 1px solid #e4e4e7;
+    padding: 14px 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px;
+    cursor: pointer; transition: box-shadow 0.15s;
+  }
+  .goal-row:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .goal-row.active-row { border-color: #c4b5fd; box-shadow: 0 0 0 2px rgba(139,92,246,0.1); }
+  .goal-row .gr-chevron { color: #a1a1aa; font-size: 14px; }
+  .goal-row .gr-id { font-size: 12px; color: #a1a1aa; font-weight: 500; font-family: 'JetBrains Mono', monospace; }
+  .goal-row .gr-title { font-size: 14px; font-weight: 600; color: #18181b; flex: 1; }
+  .goal-row .gr-bar { width: 120px; height: 6px; border-radius: 3px; background: #e4e4e7; overflow: hidden; display: flex; }
+  .goal-row .gr-bar .seg { height: 100%; }
+  .goal-row .gr-count { font-size: 12px; color: #71717a; white-space: nowrap; }
+  .goal-row .gr-time { font-size: 12px; color: #a1a1aa; }
+  .goal-row .gr-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .badge-active { background: #dbeafe; color: #1d4ed8; }
+  .badge-review { background: #f3e8ff; color: #7c3aed; }
+  .badge-warn { background: #fef3c7; color: #b45309; }
+  .goal-row.warn { border-left: 3px solid #f59e0b; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <div class="top-bar">
+    <span class="logo">DevFleet</span>
+    <div class="cmd-k">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      Search or command...
+      <kbd style="margin-left:auto">&#8984;K</kbd>
+    </div>
+    <div class="top-bar-right">
+      <span class="ws-badge">Workspace Active</span>
+    </div>
+  </div>
+
+  <div class="shell">
+    <!-- ── Sidebar ── -->
+    <div class="pane1" style="position:relative">
+
+      <!-- Top: New Goal + Search -->
+      <div class="sidebar-top">
+        <button class="new-goal-btn">
+          <span class="plus">+</span>
+          New Goal
+          <kbd>&#8984;N</kbd>
+        </button>
+        <div class="sidebar-search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          Search goals...
+          <kbd>&#8984;/</kbd>
+        </div>
+      </div>
+
+      <!-- Features (below search, above goals) -->
+      <div class="sidebar-features">
+        <div class="sidebar-action">
+          <span class="sa-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </span>
+          Settings
+        </div>
+        <div class="sidebar-action">
+          <span class="sa-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          </span>
+          Analytics
+          <span class="sa-badge" style="background:#f3e8ff;color:#7c3aed">3 insights</span>
+        </div>
+        <div class="sidebar-action">
+          <span class="sa-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          </span>
+          Health
+        </div>
+      </div>
+
+      <div class="sidebar-divider"></div>
+
+      <!-- Quick stats -->
+      <div class="quick-stats">
+        <div class="qs-card">
+          <div class="qs-val">4<span style="font-size:11px;color:#a1a1aa;font-weight:400">/7</span></div>
+          <div class="qs-label">Agents</div>
+        </div>
+        <div class="qs-card">
+          <div class="qs-val warn">3</div>
+          <div class="qs-label">Attention</div>
+        </div>
+        <div class="qs-card">
+          <div class="qs-val ok">$42</div>
+          <div class="qs-label">Spent</div>
+        </div>
+      </div>
+
+      <!-- Triage tabs filtering goal list -->
+      <div class="triage-tabs">
+        <div class="triage-tab active">All (47)</div>
+        <div class="triage-tab">Attn (3)</div>
+        <div class="triage-tab">Review (8)</div>
+        <div class="triage-tab">Done (12)</div>
+      </div>
+
+      <!-- Goal list -->
+      <div class="goal-list">
+        <div class="sidebar-goal active">
+          <span class="sg-dot" style="background:#3b82f6"></span>
+          <div class="sg-content">
+            <div class="sg-title">Add OAuth2 support for GitHub and Google</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:25%;background:#22c55e"></div><div class="seg" style="width:35%;background:#3b82f6"></div><div class="seg" style="width:15%;background:#a855f7"></div></div>
+              <span class="sg-count">4/6</span>
+              <span>12s</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-goal">
+          <span class="sg-dot" style="background:#f59e0b"></span>
+          <div class="sg-content">
+            <div class="sg-title">Migrate user sessions to Redis</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:40%;background:#22c55e"></div><div class="seg" style="width:20%;background:#3b82f6"></div></div>
+              <span class="sg-count">3/5</span>
+              <span>45s</span>
+            </div>
+          </div>
+          <span class="sg-badge sg-badge-warn">!</span>
+        </div>
+
+        <div class="sidebar-goal">
+          <span class="sg-dot" style="background:#a855f7"></span>
+          <div class="sg-content">
+            <div class="sg-title">Refactor logging to structured JSON</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:60%;background:#22c55e"></div><div class="seg" style="width:20%;background:#a855f7"></div></div>
+              <span class="sg-count">5/7</span>
+              <span>1m</span>
+            </div>
+          </div>
+          <span class="sg-badge sg-badge-review">R</span>
+        </div>
+
+        <div class="sidebar-goal">
+          <span class="sg-dot" style="background:#3b82f6"></span>
+          <div class="sg-content">
+            <div class="sg-title">Implement WebSocket connection pooling</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:15%;background:#22c55e"></div><div class="seg" style="width:45%;background:#3b82f6"></div></div>
+              <span class="sg-count">2/6</span>
+              <span>30s</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-goal">
+          <span class="sg-dot" style="background:#3b82f6"></span>
+          <div class="sg-content">
+            <div class="sg-title">Add pagination to list endpoints</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:10%;background:#22c55e"></div><div class="seg" style="width:30%;background:#3b82f6"></div></div>
+              <span class="sg-count">1/4</span>
+              <span>2m</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-goal" style="opacity:0.5">
+          <span class="sg-dot" style="background:#22c55e"></span>
+          <div class="sg-content">
+            <div class="sg-title">Add rate limiting to public API</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:100%;background:#22c55e"></div></div>
+              <span class="sg-count">4/4</span>
+              <span>8m</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-goal" style="opacity:0.5">
+          <span class="sg-dot" style="background:#22c55e"></span>
+          <div class="sg-content">
+            <div class="sg-title">Fix CORS headers for API gateway</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:100%;background:#22c55e"></div></div>
+              <span class="sg-count">2/2</span>
+              <span>15m</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-goal" style="opacity:0.5">
+          <span class="sg-dot" style="background:#22c55e"></span>
+          <div class="sg-content">
+            <div class="sg-title">Update TypeScript to v5.7</div>
+            <div class="sg-meta">
+              <div class="sg-mini-bar"><div class="seg" style="width:100%;background:#22c55e"></div></div>
+              <span class="sg-count">3/3</span>
+              <span>22m</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom: User -->
+      <div class="sidebar-bottom">
+        <div class="user-row" onclick="document.querySelector('.user-popup').classList.toggle('show')">
+          <div class="user-avatar">M</div>
+          <div class="user-info">
+            <div class="user-name">MevApps</div>
+            <div class="user-plan">$42.10 / $100.00</div>
+          </div>
+          <span class="user-dots">&middot;&middot;&middot;</span>
+        </div>
+      </div>
+
+      <!-- User popup -->
+      <div class="user-popup">
+        <div class="popup-item">
+          <span class="pi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+          Profile
+        </div>
+        <div class="popup-item">
+          <span class="pi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+          API Keys
+        </div>
+        <div class="popup-item">
+          <span class="pi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/></svg></span>
+          Billing
+        </div>
+        <div class="popup-divider"></div>
+        <div class="popup-item danger">
+          <span class="pi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m15 9-6 6m0-6 6 6"/></svg></span>
+          Stop Workspace
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Pane 2: Floor ── -->
+    <div class="pane2">
+      <div class="floor-header">
+        <span class="floor-title">Active Floor</span>
+        <div class="view-toggle">
+          <button class="view-btn active">Stream</button>
+          <button class="view-btn">Kanban</button>
+          <button class="view-btn">Table</button>
+        </div>
+      </div>
+
+      <div class="goal-row active-row">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#50</span>
+        <span class="gr-title">Add OAuth2 support for GitHub and Google</span>
+        <div class="gr-bar"><div class="seg" style="width:25%;background:#22c55e"></div><div class="seg" style="width:35%;background:#3b82f6"></div><div class="seg" style="width:15%;background:#a855f7"></div></div>
+        <span class="gr-count">4/6</span>
+        <span class="gr-time">12s</span>
+        <span class="gr-badge badge-active">Active</span>
+      </div>
+      <div class="goal-row warn">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#48</span>
+        <span class="gr-title">Migrate user sessions to Redis</span>
+        <div class="gr-bar"><div class="seg" style="width:40%;background:#22c55e"></div><div class="seg" style="width:20%;background:#3b82f6"></div></div>
+        <span class="gr-count">3/5</span>
+        <span class="gr-time">45s</span>
+        <span class="gr-badge badge-warn">Blocked</span>
+      </div>
+      <div class="goal-row">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#47</span>
+        <span class="gr-title">Refactor logging to structured JSON format</span>
+        <div class="gr-bar"><div class="seg" style="width:60%;background:#22c55e"></div><div class="seg" style="width:20%;background:#a855f7"></div></div>
+        <span class="gr-count">5/7</span>
+        <span class="gr-time">1m</span>
+        <span class="gr-badge badge-review">Review</span>
+      </div>
+      <div class="goal-row">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#44</span>
+        <span class="gr-title">Implement WebSocket connection pooling</span>
+        <div class="gr-bar"><div class="seg" style="width:15%;background:#22c55e"></div><div class="seg" style="width:45%;background:#3b82f6"></div></div>
+        <span class="gr-count">2/6</span>
+        <span class="gr-time">30s</span>
+        <span class="gr-badge badge-active">Active</span>
+      </div>
+      <div class="goal-row">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#43</span>
+        <span class="gr-title">Add pagination to list endpoints</span>
+        <div class="gr-bar"><div class="seg" style="width:10%;background:#22c55e"></div><div class="seg" style="width:30%;background:#3b82f6"></div></div>
+        <span class="gr-count">1/4</span>
+        <span class="gr-time">2m</span>
+        <span class="gr-badge badge-active">Active</span>
+      </div>
+      <div class="goal-row" style="opacity:0.6">
+        <span class="gr-chevron">&#9654;</span>
+        <span class="gr-id">#45</span>
+        <span class="gr-title">Add rate limiting to public API endpoints</span>
+        <div class="gr-bar"><div class="seg" style="width:100%;background:#22c55e"></div></div>
+        <span class="gr-count">4/4</span>
+        <span class="gr-time">8m</span>
+        <span class="gr-badge" style="background:#dcfce7;color:#166534">Done</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span class="status-dot"></span>
+    <span>SSE connected</span>
+    <span style="color:#d4d4d8">|</span>
+    <span>47 active &middot; <span style="color:#d97706">3 blocked</span> &middot; 7 agents &middot; $42.10</span>
+  </div>
+</div>
+
+<script>
+// Close popup when clicking outside
+document.addEventListener('click', (e) => {
+  const popup = document.querySelector('.user-popup');
+  const userRow = document.querySelector('.user-row');
+  if (!userRow.contains(e.target) && !popup.contains(e.target)) {
+    popup.classList.remove('show');
+  }
+});
+</script>
+</body>
+</html>

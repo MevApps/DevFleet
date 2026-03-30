@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DevFleet — Kanban Grouping Options</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #f4f4f5;
+    color: #18181b;
+    padding: 0;
+  }
+
+  /* ── Option Switcher ── */
+  .switcher {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 14px 24px;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid #e4e4e7;
+  }
+  .switcher-label { font-size: 13px; color: #71717a; font-weight: 500; }
+  .opt-btn {
+    padding: 7px 16px; border-radius: 8px; border: 1px solid #e4e4e7;
+    background: #fff; color: #52525b; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; font-family: 'Inter', sans-serif;
+  }
+  .opt-btn:hover { background: #f4f4f5; }
+  .opt-btn.active { background: #18181b; color: #fff; border-color: #18181b; }
+
+  .option-desc {
+    position: fixed; top: 56px; left: 0; right: 0; z-index: 999;
+    padding: 12px 24px;
+    background: #fffbeb; border-bottom: 1px solid #fde68a;
+    font-size: 13px; color: #92400e; text-align: center;
+    display: none;
+  }
+  .option-desc.active { display: block; }
+  .option-desc strong { color: #78350f; }
+
+  /* ── Concept container ── */
+  .concept { display: none; padding-top: 110px; min-height: 100vh; }
+  .concept.active { display: block; }
+
+  /* ── Shared Kanban Styles ── */
+  .kanban-container {
+    padding: 20px 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .kanban-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .kanban-title { font-size: 16px; font-weight: 700; color: #18181b; }
+  .kanban-subtitle { font-size: 13px; color: #71717a; margin-left: 12px; }
+
+  .phase-columns {
+    display: flex; gap: 16px;
+  }
+  .phase-col {
+    flex: 1; min-width: 0;
+  }
+  .phase-col-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid #e4e4e7;
+    border-radius: 10px 10px 0 0;
+    font-size: 12px; font-weight: 600; color: #52525b;
+    text-transform: uppercase; letter-spacing: 0.03em;
+  }
+  .phase-col-header .dot {
+    width: 8px; height: 8px; border-radius: 50%; margin-right: 6px;
+  }
+  .phase-col-header .count {
+    background: #f4f4f5; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; color: #a1a1aa;
+  }
+  .phase-col-body {
+    background: #fafafa;
+    border: 1px solid #e4e4e7;
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+    padding: 8px;
+    min-height: 300px;
+  }
+
+  /* Task card */
+  .task-card {
+    background: #fff;
+    border: 1px solid #e4e4e7;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .task-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-color: #d4d4d8; }
+  .task-card.error { border-left: 3px solid #ef4444; }
+  .task-card .task-title { font-size: 13px; font-weight: 500; color: #18181b; margin-bottom: 4px; }
+  .task-card .task-meta {
+    display: flex; align-items: center; gap: 8px; font-size: 11px; color: #a1a1aa;
+  }
+  .task-card .agent-tag {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 1px 6px; border-radius: 4px; background: #f4f4f5;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #52525b;
+  }
+  .task-card .goal-tag {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 1px 6px; border-radius: 4px;
+    font-size: 10px; font-weight: 600;
+  }
+  .goal-tag.g50 { background: #ede9fe; color: #6d28d9; }
+  .goal-tag.g48 { background: #fef3c7; color: #b45309; }
+  .goal-tag.g47 { background: #dbeafe; color: #1d4ed8; }
+  .goal-tag.g44 { background: #dcfce7; color: #166534; }
+
+  .task-card .progress-bar {
+    height: 3px; border-radius: 2px; background: #e4e4e7; margin-top: 6px; overflow: hidden;
+  }
+  .task-card .progress-fill { height: 100%; border-radius: 2px; }
+
+  /* ── Option A: Goal Swimlanes ── */
+  .swimlane {
+    margin-bottom: 20px;
+    border: 1px solid #e4e4e7;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .swimlane-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px;
+    background: #fafafa;
+    border-bottom: 1px solid #e4e4e7;
+    cursor: pointer;
+  }
+  .swimlane-header .goal-id { font-size: 12px; color: #a1a1aa; font-weight: 500; font-family: 'JetBrains Mono', monospace; }
+  .swimlane-header .goal-name { font-size: 13px; font-weight: 600; color: #18181b; flex: 1; }
+  .swimlane-header .goal-progress {
+    width: 100px; height: 4px; border-radius: 2px; background: #e4e4e7; overflow: hidden; display: flex;
+  }
+  .swimlane-header .goal-progress .seg { height: 100%; }
+  .swimlane-header .goal-progress .seg.done { background: #22c55e; }
+  .swimlane-header .goal-progress .seg.active { background: #3b82f6; }
+  .swimlane-header .goal-progress .seg.review { background: #a855f7; }
+  .swimlane-header .goal-progress .seg.queued { background: #e4e4e7; }
+  .swimlane-header .badge {
+    padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  }
+  .badge-active { background: #dbeafe; color: #1d4ed8; }
+  .badge-warn { background: #fef3c7; color: #b45309; }
+  .badge-review { background: #f3e8ff; color: #7c3aed; }
+  .badge-ok { background: #dcfce7; color: #166534; }
+
+  .swimlane-body {
+    display: flex; gap: 0;
+  }
+  .swim-col {
+    flex: 1; min-width: 0;
+    padding: 8px;
+    border-right: 1px solid #f4f4f5;
+    min-height: 80px;
+  }
+  .swim-col:last-child { border-right: none; }
+  .swim-col-label {
+    font-size: 10px; font-weight: 600; color: #a1a1aa; text-transform: uppercase;
+    letter-spacing: 0.04em; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .swim-col-label .dot { width: 5px; height: 5px; border-radius: 50%; }
+
+  .swim-task {
+    background: #fafafa; border: 1px solid #e4e4e7; border-radius: 6px;
+    padding: 8px 10px; margin-bottom: 6px; font-size: 12px;
+  }
+  .swim-task .st-title { font-weight: 500; color: #18181b; margin-bottom: 3px; }
+  .swim-task .st-meta { font-size: 10px; color: #a1a1aa; display: flex; align-items: center; gap: 6px; }
+  .swim-task.error { border-left: 3px solid #ef4444; }
+  .swim-task .st-title.error-text { color: #dc2626; }
+
+  .swim-empty { font-size: 11px; color: #d4d4d8; padding: 8px 0; text-align: center; }
+
+  /* ── Option B: Goal headers as dividers ── */
+  .goal-divider {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; margin-bottom: 6px; margin-top: 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px; font-weight: 600;
+    transition: background 0.1s;
+  }
+  .goal-divider:first-child { margin-top: 0; }
+  .goal-divider:hover { filter: brightness(0.97); }
+  .goal-divider .gd-id { font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+  .goal-divider .gd-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .goal-divider .gd-chevron { font-size: 10px; color: inherit; opacity: 0.5; transition: transform 0.15s; }
+  .goal-divider.collapsed .gd-chevron { transform: rotate(-90deg); }
+
+  .gd-g50 { background: #f5f3ff; color: #6d28d9; }
+  .gd-g48 { background: #fffbeb; color: #b45309; }
+  .gd-g47 { background: #eff6ff; color: #1d4ed8; }
+  .gd-g44 { background: #f0fdf4; color: #166534; }
+
+  .gd-tasks { }
+  .gd-tasks.hidden { display: none; }
+
+  /* ── Option C: Flat + Filter ── */
+  .filter-bar {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    background: #fff;
+    border: 1px solid #e4e4e7;
+    border-radius: 10px;
+  }
+  .filter-bar .filter-label { font-size: 12px; color: #71717a; font-weight: 500; }
+  .filter-chip {
+    padding: 4px 10px; border-radius: 6px; border: 1px solid #e4e4e7;
+    font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.15s;
+    background: #fff; color: #52525b; font-family: 'Inter', sans-serif;
+  }
+  .filter-chip:hover { background: #f4f4f5; }
+  .filter-chip.active { background: #18181b; color: #fff; border-color: #18181b; }
+  .filter-chip.active-purple { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+  .filter-chip.active-amber { background: #d97706; color: #fff; border-color: #d97706; }
+  .filter-chip.active-blue { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .filter-chip.active-green { background: #16a34a; color: #fff; border-color: #16a34a; }
+
+  /* Note callout */
+  .note {
+    margin-top: 20px; padding: 14px 16px; border-radius: 10px;
+    background: #fff; border: 1px solid #e4e4e7;
+    font-size: 13px; color: #52525b; line-height: 1.5;
+  }
+  .note strong { color: #18181b; }
+  .note .pro { color: #16a34a; font-weight: 600; }
+  .note .con { color: #dc2626; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- Switcher -->
+<div class="switcher">
+  <span class="switcher-label">Kanban Grouping:</span>
+  <button class="opt-btn active" onclick="showOption('a')">A: Goal Swimlanes</button>
+  <button class="opt-btn" onclick="showOption('b')">B: Goal Dividers</button>
+  <button class="opt-btn" onclick="showOption('c')">C: Flat + Filter</button>
+</div>
+
+<!-- Descriptions -->
+<div id="desc-a" class="option-desc active">
+  <strong>Option A:</strong> Each goal gets its own horizontal swimlane with phase columns inside it. Goals are visually isolated — clear hierarchy, but uses vertical space fast.
+</div>
+<div id="desc-b" class="option-desc">
+  <strong>Option B:</strong> Single set of phase columns (like today), but tasks are grouped under collapsible goal headers within each column. More compact, still shows which tasks belong to which goal.
+</div>
+<div id="desc-c" class="option-desc">
+  <strong>Option C:</strong> Kanban stays flat like today. Goal context shown via colored tags on each card. Pane 1 filter chips let you isolate a single goal. Stream view handles hierarchy; kanban stays phase-focused.
+</div>
+
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- OPTION A: GOAL SWIMLANES                   -->
+<!-- ═══════════════════════════════════════════ -->
+<div id="opt-a" class="concept active">
+  <div class="kanban-container">
+    <div class="kanban-header">
+      <div style="display:flex;align-items:center">
+        <span class="kanban-title">Kanban View</span>
+        <span class="kanban-subtitle">Grouped by Goal — 4 goals, 18 tasks</span>
+      </div>
+    </div>
+
+    <!-- Swimlane: Goal #50 -->
+    <div class="swimlane">
+      <div class="swimlane-header">
+        <span class="goal-id">#50</span>
+        <span class="goal-name">Add OAuth2 support for GitHub and Google</span>
+        <div class="goal-progress">
+          <div class="seg done" style="width:25%"></div>
+          <div class="seg active" style="width:35%"></div>
+          <div class="seg review" style="width:15%"></div>
+          <div class="seg queued" style="width:25%"></div>
+        </div>
+        <span class="badge badge-active">Active</span>
+      </div>
+      <div class="swimlane-body">
+        <div class="swim-col">
+          <div class="swim-col-label"><span class="dot" style="background:#22c55e"></span> Planning</div>
+          <div class="swim-task" style="opacity:0.5">
+            <div class="st-title" style="text-decoration:line-through">Write spec document</div>
+            <div class="st-meta">&#10003; sup-01</div>
+          </div>
+        </div>
+        <div class="swim-col">
+          <div class="swim-col-label"><span class="dot" style="background:#3b82f6"></span> Implementation</div>
+          <div class="swim-task">
+            <div class="st-title">Write GitHub OAuth handler</div>
+            <div class="st-meta"><span class="agent-tag">dev-03</span> 12s ago</div>
+          </div>
+          <div class="swim-task">
+            <div class="st-title">Write Google OAuth handler</div>
+            <div class="st-meta"><span class="agent-tag">dev-05</span> 3m ago</div>
+          </div>
+          <div class="swim-task">
+            <div class="st-title">Add auth middleware</div>
+            <div class="st-meta">queued</div>
+          </div>
+        </div>
+        <div class="swim-col">
+          <div class="swim-col-label"><span class="dot" style="background:#a855f7"></span> Review</div>
+          <div class="swim-task" style="border-left:3px solid #a855f7">
+            <div class="st-title">Review: spec document</div>
+            <div class="st-meta" style="color:#7c3aed;font-weight:500">Awaiting you</div>
+          </div>
+        </div>
+        <div class="swim-col">
+          <div class="swim-col-label"><span class="dot" style="background:#22c55e"></span> Done</div>
+          <div class="swim-task" style="opacity:0.5">
+            <div class="st-title">Write integration tests</div>
+            <div class="st-meta">&#10003; 5m ago</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Swimlane: Goal #48 -->
+    <div class="swimlane" style="border-color:#fde68a">
+      <div class="swimlane-header" style="background:#fffbeb">
+        <span class="goal-id">#48</span>
+        <span class="goal-name">Migrate user sessions to Redis</span>
+        <div class="goal-progress">
+          <div class="seg done" style="width:40%"></div>
+          <div class="seg active" style="width:20%"></div>
+          <div class="seg queued" style="width:40%"></div>
+        </div>
+        <span class="badge badge-warn">1 Blocked</span>
+      </div>
+      <div class="swimlane-body">
+        <div class="swim-col">
+          <div class="swim-col-label"><span class="dot" style="background:#22c55e"></span> Planning</div>
+          <div class="swim-task" style="opacity:0.5">
+            <div class="st-title" style="text-decoration:line-through">Design session schema</div>
+            <div class="st-meta">&#10003;</div>
+          </div>
+        </div>
+        <div class="swim-col">
+          <div class="swim-col-label"><span class="dot" style="background:#3b82f6"></span> Implementation</div>
+          <div class="swim-task error">
+            <div class="st-title error-text">&#9888; Write Redis adapter</div>
+            <div class="st-meta" style="color:#ef4444">Rate limit (429)</div>
+          </div>
+          <div class="swim-task">
+            <div class="st-title">Update session middleware</div>
+            <div class="st-meta">queued</div>
+          </div>
+        </div>
+        <div class="swim-col">
+          <div class="swim-col-label"><span class="dot" style="background:#a855f7"></span> Review</div>
+          <div class="swim-empty">—</div>
+        </div>
+        <div class="swim-col">
+          <div class="swim-col-label"><span class="dot" style="background:#22c55e"></span> Done</div>
+          <div class="swim-task" style="opacity:0.5">
+            <div class="st-title">Setup Redis connection pool</div>
+            <div class="st-meta">&#10003;</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Swimlane: Goal #47 -->
+    <div class="swimlane">
+      <div class="swimlane-header">
+        <span class="goal-id">#47</span>
+        <span class="goal-name">Refactor logging to structured JSON format</span>
+        <div class="goal-progress">
+          <div class="seg done" style="width:60%"></div>
+          <div class="seg review" style="width:20%"></div>
+          <div class="seg queued" style="width:20%"></div>
+        </div>
+        <span class="badge badge-review">Review</span>
+      </div>
+      <div class="swimlane-body">
+        <div class="swim-col">
+          <div class="swim-col-label"><span class="dot" style="background:#22c55e"></span> Planning</div>
+          <div class="swim-task" style="opacity:0.5">
+            <div class="st-title" style="text-decoration:line-through">Audit current logging</div>
+            <div class="st-meta">&#10003;</div>
+          </div>
+        </div>
+        <div class="swim-col">
+          <div class="swim-col-label"><span class="dot" style="background:#3b82f6"></span> Implementation</div>
+          <div class="swim-task" style="opacity:0.5">
+            <div class="st-title" style="text-decoration:line-through">Replace console.log calls</div>
+            <div class="st-meta">&#10003; dev-01</div>
+          </div>
+          <div class="swim-task" style="opacity:0.5">
+            <div class="st-title" style="text-decoration:line-through">Add structured logger util</div>
+            <div class="st-meta">&#10003; dev-03</div>
+          </div>
+        </div>
+        <div class="swim-col">
+          <div class="swim-col-label"><span class="dot" style="background:#a855f7"></span> Review</div>
+          <div class="swim-task" style="border-left:3px solid #a855f7">
+            <div class="st-title">Review: logger implementation</div>
+            <div class="st-meta"><span class="agent-tag">rev-01</span></div>
+          </div>
+          <div class="swim-task">
+            <div class="st-title">Review: log migration</div>
+            <div class="st-meta">queued</div>
+          </div>
+        </div>
+        <div class="swim-col">
+          <div class="swim-col-label"><span class="dot" style="background:#22c55e"></span> Done</div>
+          <div class="swim-task" style="opacity:0.5">
+            <div class="st-title">Write logger tests</div>
+            <div class="st-meta">&#10003;</div>
+          </div>
+          <div class="swim-task" style="opacity:0.5">
+            <div class="st-title">Update log config</div>
+            <div class="st-meta">&#10003;</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="pro">Pro:</span> Crystal-clear goal isolation — you see one goal's entire pipeline at a glance. Easy to collapse goals you don't care about.<br>
+      <span class="con">Con:</span> Vertical space usage. With 20+ active goals, you'd be scrolling endlessly. Lots of empty cells when a goal has no tasks in a phase.
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- OPTION B: GOAL DIVIDERS IN COLUMNS         -->
+<!-- ═══════════════════════════════════════════ -->
+<div id="opt-b" class="concept">
+  <div class="kanban-container">
+    <div class="kanban-header">
+      <div style="display:flex;align-items:center">
+        <span class="kanban-title">Kanban View</span>
+        <span class="kanban-subtitle">Phase columns with goal grouping — 4 goals, 18 tasks</span>
+      </div>
+    </div>
+
+    <div class="phase-columns">
+      <!-- Planning Column -->
+      <div class="phase-col">
+        <div class="phase-col-header">
+          <div style="display:flex;align-items:center"><span class="dot" style="background:#22c55e"></span> Planning</div>
+          <span class="count">2</span>
+        </div>
+        <div class="phase-col-body">
+          <div class="goal-divider gd-g50">
+            <span class="gd-chevron">&#9660;</span>
+            <span class="gd-id">#50</span>
+            <span class="gd-name">OAuth2</span>
+          </div>
+          <div class="gd-tasks">
+            <div class="task-card" style="opacity:0.5">
+              <div class="task-title" style="text-decoration:line-through; font-size:13px; font-weight:500">Write spec document</div>
+              <div class="task-meta"><span class="agent-tag">sup-01</span> &#10003;</div>
+            </div>
+          </div>
+
+          <div class="goal-divider gd-g48">
+            <span class="gd-chevron">&#9660;</span>
+            <span class="gd-id">#48</span>
+            <span class="gd-name">Redis sessions</span>
+          </div>
+          <div class="gd-tasks">
+            <div class="task-card" style="opacity:0.5">
+              <div class="task-title" style="text-decoration:line-through; font-size:13px; font-weight:500">Design session schema</div>
+              <div class="task-meta">&#10003;</div>
+            </div>
+          </div>
+
+          <div class="goal-divider gd-g47">
+            <span class="gd-chevron">&#9660;</span>
+            <span class="gd-id">#47</span>
+            <span class="gd-name">Structured logging</span>
+          </div>
+          <div class="gd-tasks">
+            <div class="task-card" style="opacity:0.5">
+              <div class="task-title" style="text-decoration:line-through; font-size:13px; font-weight:500">Audit current logging</div>
+              <div class="task-meta">&#10003;</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Implementation Column -->
+      <div class="phase-col">
+        <div class="phase-col-header">
+          <div style="display:flex;align-items:center"><span class="dot" style="background:#3b82f6"></span> Implementation</div>
+          <span class="count">5</span>
+        </div>
+        <div class="phase-col-body">
+          <div class="goal-divider gd-g50">
+            <span class="gd-chevron">&#9660;</span>
+            <span class="gd-id">#50</span>
+            <span class="gd-name">OAuth2</span>
+          </div>
+          <div class="gd-tasks">
+            <div class="task-card">
+              <div class="task-title" style="font-size:13px;font-weight:500">Write GitHub OAuth handler</div>
+              <div class="task-meta"><span class="agent-tag">dev-03</span> 12s ago</div>
+              <div class="progress-bar"><div class="progress-fill" style="width:65%;background:#3b82f6"></div></div>
+            </div>
+            <div class="task-card">
+              <div class="task-title" style="font-size:13px;font-weight:500">Write Google OAuth handler</div>
+              <div class="task-meta"><span class="agent-tag">dev-05</span> 3m ago</div>
+              <div class="progress-bar"><div class="progress-fill" style="width:30%;background:#3b82f6"></div></div>
+            </div>
+            <div class="task-card">
+              <div class="task-title" style="font-size:13px;font-weight:500">Add auth middleware</div>
+              <div class="task-meta">queued</div>
+            </div>
+          </div>
+
+          <div class="goal-divider gd-g48">
+            <span class="gd-chevron">&#9660;</span>
+            <span class="gd-id">#48</span>
+            <span class="gd-name">Redis sessions</span>
+          </div>
+          <div class="gd-tasks">
+            <div class="task-card error">
+              <div class="task-title" style="font-size:13px;font-weight:500;color:#dc2626">&#9888; Write Redis adapter</div>
+              <div class="task-meta" style="color:#ef4444">Rate limit (429)</div>
+            </div>
+            <div class="task-card">
+              <div class="task-title" style="font-size:13px;font-weight:500">Update session middleware</div>
+              <div class="task-meta">queued</div>
+            </div>
+          </div>
+
+          <div class="goal-divider gd-g47 collapsed" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('hidden')">
+            <span class="gd-chevron">&#9660;</span>
+            <span class="gd-id">#47</span>
+            <span class="gd-name">Structured logging</span>
+          </div>
+          <div class="gd-tasks hidden">
+            <div class="task-card" style="opacity:0.5">
+              <div class="task-title" style="text-decoration:line-through;font-size:13px;font-weight:500">Replace console.log calls</div>
+              <div class="task-meta">&#10003; dev-01</div>
+            </div>
+            <div class="task-card" style="opacity:0.5">
+              <div class="task-title" style="text-decoration:line-through;font-size:13px;font-weight:500">Add structured logger util</div>
+              <div class="task-meta">&#10003; dev-03</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Review Column -->
+      <div class="phase-col">
+        <div class="phase-col-header">
+          <div style="display:flex;align-items:center"><span class="dot" style="background:#a855f7"></span> Review</div>
+          <span class="count">3</span>
+        </div>
+        <div class="phase-col-body">
+          <div class="goal-divider gd-g50">
+            <span class="gd-chevron">&#9660;</span>
+            <span class="gd-id">#50</span>
+            <span class="gd-name">OAuth2</span>
+          </div>
+          <div class="gd-tasks">
+            <div class="task-card" style="border-left:3px solid #a855f7">
+              <div class="task-title" style="font-size:13px;font-weight:500">Review: spec document</div>
+              <div class="task-meta" style="color:#7c3aed;font-weight:500">Awaiting you</div>
+            </div>
+          </div>
+
+          <div class="goal-divider gd-g47">
+            <span class="gd-chevron">&#9660;</span>
+            <span class="gd-id">#47</span>
+            <span class="gd-name">Structured logging</span>
+          </div>
+          <div class="gd-tasks">
+            <div class="task-card">
+              <div class="task-title" style="font-size:13px;font-weight:500">Review: logger implementation</div>
+              <div class="task-meta"><span class="agent-tag">rev-01</span></div>
+            </div>
+            <div class="task-card">
+              <div class="task-title" style="font-size:13px;font-weight:500">Review: log migration</div>
+              <div class="task-meta">queued</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Done Column -->
+      <div class="phase-col">
+        <div class="phase-col-header">
+          <div style="display:flex;align-items:center"><span class="dot" style="background:#22c55e"></span> Done</div>
+          <span class="count">5</span>
+        </div>
+        <div class="phase-col-body">
+          <div class="goal-divider gd-g50">
+            <span class="gd-chevron">&#9660;</span>
+            <span class="gd-id">#50</span>
+            <span class="gd-name">OAuth2</span>
+          </div>
+          <div class="gd-tasks">
+            <div class="task-card" style="opacity:0.5">
+              <div class="task-title" style="font-size:13px;font-weight:500">Write integration tests</div>
+              <div class="task-meta">&#10003; 5m ago</div>
+            </div>
+          </div>
+
+          <div class="goal-divider gd-g48">
+            <span class="gd-chevron">&#9660;</span>
+            <span class="gd-id">#48</span>
+            <span class="gd-name">Redis sessions</span>
+          </div>
+          <div class="gd-tasks">
+            <div class="task-card" style="opacity:0.5">
+              <div class="task-title" style="font-size:13px;font-weight:500">Setup Redis connection pool</div>
+              <div class="task-meta">&#10003;</div>
+            </div>
+          </div>
+
+          <div class="goal-divider gd-g47">
+            <span class="gd-chevron">&#9660;</span>
+            <span class="gd-id">#47</span>
+            <span class="gd-name">Structured logging</span>
+          </div>
+          <div class="gd-tasks">
+            <div class="task-card" style="opacity:0.5">
+              <div class="task-title" style="font-size:13px;font-weight:500">Write logger tests</div>
+              <div class="task-meta">&#10003;</div>
+            </div>
+            <div class="task-card" style="opacity:0.5">
+              <div class="task-title" style="font-size:13px;font-weight:500">Update log config</div>
+              <div class="task-meta">&#10003;</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="pro">Pro:</span> Compact — one set of columns, goal grouping is lightweight. Collapsible goal headers let you hide completed goals. Familiar kanban feel.<br>
+      <span class="con">Con:</span> Visual noise from repeated goal headers across columns. Harder to see a single goal's full pipeline at a glance (it's spread across columns). Click the <strong>#47 Structured logging</strong> divider in the Implementation column to see collapse behavior.
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- OPTION C: FLAT + FILTER                    -->
+<!-- ═══════════════════════════════════════════ -->
+<div id="opt-c" class="concept">
+  <div class="kanban-container">
+    <div class="kanban-header">
+      <div style="display:flex;align-items:center">
+        <span class="kanban-title">Kanban View</span>
+        <span class="kanban-subtitle">Phase-focused — flat tasks, filter by goal</span>
+      </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+      <span class="filter-label">Filter by goal:</span>
+      <button class="filter-chip active" onclick="filterGoal(this, 'all')">All Goals</button>
+      <button class="filter-chip" onclick="filterGoal(this, 'g50')" data-goal="g50">
+        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#7c3aed;margin-right:4px"></span>
+        #50 OAuth2
+      </button>
+      <button class="filter-chip" onclick="filterGoal(this, 'g48')" data-goal="g48">
+        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#d97706;margin-right:4px"></span>
+        #48 Redis
+      </button>
+      <button class="filter-chip" onclick="filterGoal(this, 'g47')" data-goal="g47">
+        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#2563eb;margin-right:4px"></span>
+        #47 Logging
+      </button>
+      <button class="filter-chip" onclick="filterGoal(this, 'g44')" data-goal="g44">
+        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#16a34a;margin-right:4px"></span>
+        #44 WebSocket
+      </button>
+    </div>
+
+    <div class="phase-columns" id="flat-kanban">
+      <!-- Planning -->
+      <div class="phase-col">
+        <div class="phase-col-header">
+          <div style="display:flex;align-items:center"><span class="dot" style="background:#22c55e"></span> Planning</div>
+          <span class="count">2</span>
+        </div>
+        <div class="phase-col-body">
+          <div class="task-card" style="opacity:0.5" data-goal="g50">
+            <div class="task-title" style="text-decoration:line-through; font-size:13px;font-weight:500">Write spec document</div>
+            <div class="task-meta"><span class="goal-tag g50">#50</span> <span class="agent-tag">sup-01</span> &#10003;</div>
+          </div>
+          <div class="task-card" style="opacity:0.5" data-goal="g48">
+            <div class="task-title" style="text-decoration:line-through; font-size:13px;font-weight:500">Design session schema</div>
+            <div class="task-meta"><span class="goal-tag g48">#48</span> &#10003;</div>
+          </div>
+          <div class="task-card" style="opacity:0.5" data-goal="g47">
+            <div class="task-title" style="text-decoration:line-through; font-size:13px;font-weight:500">Audit current logging</div>
+            <div class="task-meta"><span class="goal-tag g47">#47</span> &#10003;</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Implementation -->
+      <div class="phase-col">
+        <div class="phase-col-header">
+          <div style="display:flex;align-items:center"><span class="dot" style="background:#3b82f6"></span> Implementation</div>
+          <span class="count">7</span>
+        </div>
+        <div class="phase-col-body">
+          <div class="task-card" data-goal="g50">
+            <div class="task-title" style="font-size:13px;font-weight:500">Write GitHub OAuth handler</div>
+            <div class="task-meta"><span class="goal-tag g50">#50</span> <span class="agent-tag">dev-03</span> 12s ago</div>
+            <div class="progress-bar"><div class="progress-fill" style="width:65%;background:#3b82f6"></div></div>
+          </div>
+          <div class="task-card" data-goal="g50">
+            <div class="task-title" style="font-size:13px;font-weight:500">Write Google OAuth handler</div>
+            <div class="task-meta"><span class="goal-tag g50">#50</span> <span class="agent-tag">dev-05</span> 3m ago</div>
+            <div class="progress-bar"><div class="progress-fill" style="width:30%;background:#3b82f6"></div></div>
+          </div>
+          <div class="task-card error" data-goal="g48">
+            <div class="task-title" style="font-size:13px;font-weight:500;color:#dc2626">&#9888; Write Redis adapter</div>
+            <div class="task-meta"><span class="goal-tag g48">#48</span> <span style="color:#ef4444">Rate limit (429)</span></div>
+          </div>
+          <div class="task-card" data-goal="g50">
+            <div class="task-title" style="font-size:13px;font-weight:500">Add auth middleware</div>
+            <div class="task-meta"><span class="goal-tag g50">#50</span> queued</div>
+          </div>
+          <div class="task-card" data-goal="g48">
+            <div class="task-title" style="font-size:13px;font-weight:500">Update session middleware</div>
+            <div class="task-meta"><span class="goal-tag g48">#48</span> queued</div>
+          </div>
+          <div class="task-card" style="opacity:0.5" data-goal="g47">
+            <div class="task-title" style="text-decoration:line-through;font-size:13px;font-weight:500">Replace console.log calls</div>
+            <div class="task-meta"><span class="goal-tag g47">#47</span> &#10003; dev-01</div>
+          </div>
+          <div class="task-card" style="opacity:0.5" data-goal="g47">
+            <div class="task-title" style="text-decoration:line-through;font-size:13px;font-weight:500">Add structured logger util</div>
+            <div class="task-meta"><span class="goal-tag g47">#47</span> &#10003; dev-03</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Review -->
+      <div class="phase-col">
+        <div class="phase-col-header">
+          <div style="display:flex;align-items:center"><span class="dot" style="background:#a855f7"></span> Review</div>
+          <span class="count">3</span>
+        </div>
+        <div class="phase-col-body">
+          <div class="task-card" style="border-left:3px solid #a855f7" data-goal="g50">
+            <div class="task-title" style="font-size:13px;font-weight:500">Review: spec document</div>
+            <div class="task-meta"><span class="goal-tag g50">#50</span> <span style="color:#7c3aed;font-weight:500">Awaiting you</span></div>
+          </div>
+          <div class="task-card" data-goal="g47">
+            <div class="task-title" style="font-size:13px;font-weight:500">Review: logger implementation</div>
+            <div class="task-meta"><span class="goal-tag g47">#47</span> <span class="agent-tag">rev-01</span></div>
+          </div>
+          <div class="task-card" data-goal="g47">
+            <div class="task-title" style="font-size:13px;font-weight:500">Review: log migration</div>
+            <div class="task-meta"><span class="goal-tag g47">#47</span> queued</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Done -->
+      <div class="phase-col">
+        <div class="phase-col-header">
+          <div style="display:flex;align-items:center"><span class="dot" style="background:#22c55e"></span> Done</div>
+          <span class="count">5</span>
+        </div>
+        <div class="phase-col-body">
+          <div class="task-card" style="opacity:0.5" data-goal="g50">
+            <div class="task-title" style="font-size:13px;font-weight:500">Write integration tests</div>
+            <div class="task-meta"><span class="goal-tag g50">#50</span> &#10003; 5m ago</div>
+          </div>
+          <div class="task-card" style="opacity:0.5" data-goal="g48">
+            <div class="task-title" style="font-size:13px;font-weight:500">Setup Redis connection pool</div>
+            <div class="task-meta"><span class="goal-tag g48">#48</span> &#10003;</div>
+          </div>
+          <div class="task-card" style="opacity:0.5" data-goal="g47">
+            <div class="task-title" style="font-size:13px;font-weight:500">Write logger tests</div>
+            <div class="task-meta"><span class="goal-tag g47">#47</span> &#10003;</div>
+          </div>
+          <div class="task-card" style="opacity:0.5" data-goal="g47">
+            <div class="task-title" style="font-size:13px;font-weight:500">Update log config</div>
+            <div class="task-meta"><span class="goal-tag g47">#47</span> &#10003;</div>
+          </div>
+          <div class="task-card" style="opacity:0.5" data-goal="g44">
+            <div class="task-title" style="font-size:13px;font-weight:500">Pool config setup</div>
+            <div class="task-meta"><span class="goal-tag g44">#44</span> &#10003;</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="pro">Pro:</span> Maximum density. Closest to a classic kanban. Phase-to-phase flow is immediately visible. Colored goal tags provide context without breaking the column layout. <strong>Try clicking the filter chips above</strong> to see goal isolation.<br>
+      <span class="con">Con:</span> No visual grouping by default — you rely on colored tags to distinguish goals. At high scale (100+ tasks), the columns get long without structure. Works best paired with the Stream view for goal-level thinking.
+    </div>
+  </div>
+</div>
+
+
+<script>
+function showOption(id) {
+  document.querySelectorAll('.concept').forEach(c => c.classList.remove('active'));
+  document.getElementById('opt-' + id).classList.add('active');
+  document.querySelectorAll('.option-desc').forEach(d => d.classList.remove('active'));
+  document.getElementById('desc-' + id).classList.add('active');
+  document.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+function filterGoal(btn, goal) {
+  // Update active chip
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active', 'active-purple', 'active-amber', 'active-blue', 'active-green'));
+  if (goal === 'all') {
+    btn.classList.add('active');
+  } else {
+    const colorMap = { g50: 'active-purple', g48: 'active-amber', g47: 'active-blue', g44: 'active-green' };
+    btn.classList.add(colorMap[goal]);
+  }
+
+  // Filter cards
+  const cards = document.querySelectorAll('#flat-kanban .task-card[data-goal]');
+  cards.forEach(card => {
+    if (goal === 'all' || card.dataset.goal === goal) {
+      card.style.display = '';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+}
+</script>
+</body>
+</html>
