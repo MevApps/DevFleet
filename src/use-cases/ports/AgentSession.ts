@@ -15,6 +15,7 @@ export type SessionEvent =
   | { readonly type: "turn_completed"; readonly tokensIn: number; readonly tokensOut: number }
   | { readonly type: "completed"; readonly result: string; readonly totalTokensIn: number; readonly totalTokensOut: number; readonly durationMs: number; readonly numTurns: number }
   | { readonly type: "error"; readonly reason: string }
+  | { type: "tool_call"; tool: string; target: string }
 
 export interface AgentSession {
   launch(task: PhaseTask, signal: AbortSignal): AsyncIterable<SessionEvent>

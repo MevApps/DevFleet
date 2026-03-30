@@ -48,6 +48,9 @@ export class ClaudeAgentSdkAdapter implements AgentSession {
       },
     })
 
+    let pendingToolName = ""
+    let pendingToolInput = ""
+
     for await (const message of stream) {
       switch (message.type) {
         case "system":
@@ -69,6 +72,33 @@ export class ClaudeAgentSdkAdapter implements AgentSession {
             }
           }
           break
+
+        case "stream_event": {
+          const event = (message as any).event
+          if (!event) break
+
+          if (event.type === "content_block_start" && event.content_block?.type === "tool_use") {
+            pendingToolName = event.content_block.name ?? ""
+            pendingToolInput = ""
+          }
+
+          if (event.type === "content_block_delta" && event.delta?.type === "input_json_delta") {
+            pendingToolInput += event.delta.partial_json ?? ""
+          }
+
+          if (event.type === "content_block_stop" && pendingToolName) {
+            let target = ""
+            try {
+              const parsed = JSON.parse(pendingToolInput)
+              target = parsed.file_path ?? parsed.command ?? parsed.pattern ?? parsed.path ?? ""
+            } catch { /* partial JSON — best effort */ }
+
+            yield { type: "tool_call" as const, tool: pendingToolName, target }
+            pendingToolName = ""
+            pendingToolInput = ""
+          }
+          break
+        }
 
         case "result":
           if (message.subtype === "success") {

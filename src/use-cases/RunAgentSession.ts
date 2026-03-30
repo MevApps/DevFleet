@@ -58,6 +58,18 @@ export class RunAgentSession implements AgentExecutor {
             yield { type: "text", data: { content: event.content } }
             break
 
+          case "tool_call":
+            await this.bus.emit({
+              id: createMessageId(),
+              type: "agent.tool_call",
+              agentId,
+              taskId: task.id,
+              tool: event.tool,
+              target: event.target,
+              timestamp: new Date(),
+            })
+            break
+
           case "turn_completed": {
             const now = Date.now()
             const turnDurationMs = now - lastTurnTime

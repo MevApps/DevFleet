@@ -285,6 +285,17 @@ interface CeoAlertMessage extends BaseMessage {
 }
 
 // ---------------------------------------------------------------------------
+// Agent activity
+// ---------------------------------------------------------------------------
+interface AgentToolCallMessage extends BaseMessage {
+  readonly type: "agent.tool_call"
+  readonly agentId: AgentId
+  readonly taskId: TaskId
+  readonly tool: string
+  readonly target: string
+}
+
+// ---------------------------------------------------------------------------
 // Workspace
 // ---------------------------------------------------------------------------
 interface WorkspaceGoalDeliveredMessage extends BaseMessage {
@@ -342,6 +353,7 @@ export type Message =
   | AgentStuckMessage
   | AgentPausedMessage
   | AgentResumedMessage
+  | AgentToolCallMessage
   | InsightAcceptedMessage
   | InsightDismissedMessage
   | BudgetUpdatedMessage
