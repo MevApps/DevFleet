@@ -19,6 +19,7 @@ import type { PipelinePresenter } from "../../adapters/presenters/PipelinePresen
 import type { MetricsPresenter } from "../../adapters/presenters/MetricsPresenter"
 import type { PluginRegistry } from "../../adapters/plugins/PluginRegistry"
 import type { SSEManager } from "./sseManager"
+import type { MessagePort } from "../../use-cases/ports/MessagePort"
 import { agentRoutes } from "./routes/agentRoutes"
 import { goalRoutes } from "./routes/goalRoutes"
 import { taskRoutes } from "./routes/taskRoutes"
@@ -47,6 +48,7 @@ export interface DashboardDeps {
   readonly computeQuality: ComputeQualityMetrics
   readonly computeTimings: ComputePhaseTimings
   readonly alertPreferencesStore: AlertPreferencesStore
+  readonly bus: MessagePort
 }
 
 export function createServer(deps: DashboardDeps): Express {
@@ -63,7 +65,7 @@ export function createServer(deps: DashboardDeps): Express {
   // Route modules
   app.use("/api/agents", agentRoutes(deps.agentRegistry, deps.pauseAgent))
   app.use("/api/goals", goalRoutes(deps.goalRepo, deps.createGoal))
-  app.use("/api/tasks", taskRoutes(deps.taskRepo))
+  app.use("/api/tasks", taskRoutes(deps.taskRepo, deps.bus))
   app.use("/api/events", eventRoutes(deps.eventStore, deps.sseManager))
   app.use("/api/metrics", metricsRoutes(deps.metrics, deps.computeFinancials, deps.computeQuality, deps.computeTimings))
   app.use("/api/insights", insightRoutes(deps.insightRepo, deps.acceptInsight, deps.dismissInsight))

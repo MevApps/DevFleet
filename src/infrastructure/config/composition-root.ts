@@ -468,6 +468,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     computeQuality: computeQuality,
     computeTimings: computeTimings,
     alertPreferencesStore,
+    bus,
   }
 
   // I2: DetectStuckAgent runs on an interval so stuck agents are caught without polling.
