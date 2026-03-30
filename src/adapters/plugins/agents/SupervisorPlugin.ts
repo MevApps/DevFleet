@@ -59,7 +59,7 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
   subscriptions(): ReadonlyArray<MessageFilter> {
     return [{
       types: [
-        "goal.created", "task.completed", "task.failed",
+        "goal.created", "task.completed", "task.failed", "task.retry",
         "code.completed",
         "review.approved", "review.rejected",
         "budget.exceeded", "agent.stuck",
@@ -75,7 +75,7 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
         // Fire-and-forget: the pipeline runs in the background.
         // Without this, bus.emit() blocks until the entire pipeline completes,
         // which freezes the HTTP response for minutes.
-        void this.handleGoalCreated(message.goalId, message.description).catch(err =>
+        void this.handleGoalCreated(message.goalId, message.description, message.phases).catch(err =>
           console.error("[SupervisorPlugin] handleGoalCreated failed:", err)
         )
         return
@@ -93,10 +93,12 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
         return this.handleBudgetExceeded(message.taskId)
       case "agent.stuck":
         return this.handleAgentStuck(message.taskId)
+      case "task.retry":
+        return this.handleTaskRetry(message.taskId, message.hint)
     }
   }
 
-  private async handleGoalCreated(goalId: GoalId, description: string): Promise<void> {
+  private async handleGoalCreated(goalId: GoalId, description: string, phases?: readonly string[]): Promise<void> {
     console.log("[SupervisorPlugin] handleGoalCreated START, goalId:", goalId)
     // Detect project configuration
     const config = await this.deps.detectProjectConfig.execute()
@@ -159,7 +161,11 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
       }))
     }
 
-    const definitions: TaskDefinition[] = taskDefs.map(def => ({
+    // Filter to requested phases (if specified)
+    const requestedPhases = phases ?? this.deps.pipelineConfig.phases
+    const filteredDefs = taskDefs.filter(def => requestedPhases.includes(def.phase))
+
+    const definitions: TaskDefinition[] = filteredDefs.map(def => ({
       id: createTaskId(),
       description: def.description,
       phase: def.phase,
@@ -301,5 +307,24 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
     const task = await this.deps.taskRepo.findById(taskId)
     await this.deps.discardBranch.execute(taskId, "agent stuck")
     if (task) await this.advancePipeline(task.goalId)
+  }
+
+  private async handleTaskRetry(taskId: TaskId, hint: string): Promise<void> {
+    const task = await this.deps.taskRepo.findById(taskId)
+    if (!task) return
+
+    const updatedDescription = `${task.description}\n\nUser hint: ${hint}`
+    const retried = {
+      ...task,
+      description: updatedDescription,
+      status: "queued" as const,
+      assignedTo: null,
+      retryCount: task.retryCount + 1,
+      version: task.version + 1,
+    }
+    await this.deps.taskRepo.update(retried)
+
+    const role = roleForPhase(task.phase, this.deps.pipelineConfig)
+    if (role) await this.deps.assignTask.execute(taskId, role)
   }
 }

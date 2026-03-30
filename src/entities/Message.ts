@@ -22,6 +22,7 @@ interface GoalCreatedMessage extends BaseMessage {
   readonly type: "goal.created"
   readonly goalId: GoalId
   readonly description: string
+  readonly phases?: readonly string[]
 }
 
 interface GoalCompletedMessage extends BaseMessage {
@@ -318,6 +319,15 @@ interface WorkspaceStatusChangedMessage extends BaseMessage {
 }
 
 // ---------------------------------------------------------------------------
+// Intervention / control
+// ---------------------------------------------------------------------------
+interface TaskRetryMessage extends BaseMessage {
+  readonly type: "task.retry"
+  readonly taskId: TaskId
+  readonly hint: string
+}
+
+// ---------------------------------------------------------------------------
 // Union + utilities
 // ---------------------------------------------------------------------------
 export type Message =
@@ -362,6 +372,7 @@ export type Message =
   | WorkspaceGoalDeliveredMessage
   | WorkspaceGoalFailedMessage
   | WorkspaceStatusChangedMessage
+  | TaskRetryMessage
 
 export type MessageType = Message["type"]
 

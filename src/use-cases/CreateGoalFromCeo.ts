@@ -10,6 +10,7 @@ export interface CreateGoalInput {
   readonly description: string
   readonly maxTokens: number
   readonly maxCostUsd: number
+  readonly phases?: readonly string[]
 }
 
 export class CreateGoalFromCeo {
@@ -38,6 +39,7 @@ export class CreateGoalFromCeo {
       type: "goal.created",
       goalId: goal.id,
       description: goal.description,
+      phases: input.phases,
       timestamp: new Date(),
     })
     console.log("[CreateGoalFromCeo] bus.emit returned")
