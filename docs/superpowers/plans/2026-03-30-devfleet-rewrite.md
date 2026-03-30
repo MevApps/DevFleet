@@ -861,157 +861,12 @@ git commit -m "feat: emit agent.tool_call messages on the bus during agent sessi
 
 ---
 
-## Task 7: Update All Agent Plugins to Use ContextAwarePromptBuilder
-
-**Files:**
-- Modify: `src/adapters/plugins/agents/ProductPlugin.ts`
-- Modify: `src/adapters/plugins/agents/ArchitectPlugin.ts`
-- Modify: `src/adapters/plugins/agents/DeveloperPlugin.ts`
-- Modify: `src/adapters/plugins/agents/ReviewerPlugin.ts`
-
-- [ ] **Step 1: Update ProductPlugin**
-
-Replace custom prompt assembly with `promptBuilder.build()`. In `ProductPlugin`:
-
-Add to `ProductPluginDeps`:
-```typescript
-  readonly promptBuilder: AgentPromptBuilder
-```
-
-Add import:
-```typescript
-import type { AgentPromptBuilder } from "../../../use-cases/ports/AgentPromptBuilder"
-```
-
-Replace the config object in `handle()` (the section that builds `systemPrompt: this.deps.systemPrompt`):
-
-```typescript
-    const systemPrompt = await this.deps.promptBuilder.build(this.deps.systemPrompt, task.goalId)
-
-    const config = {
-      role: ROLES.PRODUCT,
-      systemPrompt,
-      capabilities: [] as const,
-      model: this.deps.model,
-      budget: task.budget,
-      workingDir: this.deps.workspaceDir,
-    }
-```
-
-- [ ] **Step 2: Update ArchitectPlugin**
-
-Remove the manual artifact lookup (lines 54-59) and replace with `promptBuilder.build()`.
-
-Add to `ArchitectPluginDeps`:
-```typescript
-  readonly promptBuilder: AgentPromptBuilder
-```
-
-Add import:
-```typescript
-import type { AgentPromptBuilder } from "../../../use-cases/ports/AgentPromptBuilder"
-```
-
-Remove `artifactRepo` from deps (no longer needed — prompt builder handles it).
-
-Replace the handle() method's prompt section:
-
-```typescript
-    const systemPrompt = await this.deps.promptBuilder.build(this.deps.systemPrompt, task.goalId)
-
-    const config = {
-      role: ROLES.ARCHITECT,
-      systemPrompt,
-      capabilities: [] as const,
-      model: this.deps.model,
-      budget: task.budget,
-      workingDir: this.deps.workspaceDir,
-    }
-```
-
-Keep the artifact creation code (lines 77-91) — the architect still produces artifacts.
-
-- [ ] **Step 3: Update DeveloperPlugin**
-
-Add to `DeveloperPluginDeps`:
-```typescript
-  readonly promptBuilder: AgentPromptBuilder
-```
-
-Add import:
-```typescript
-import type { AgentPromptBuilder } from "../../../use-cases/ports/AgentPromptBuilder"
-```
-
-Replace the config object in `handle()`:
-
-```typescript
-    const systemPrompt = await this.deps.promptBuilder.build(this.deps.systemPrompt, task.goalId)
-
-    const config = {
-      role: ROLES.DEVELOPER,
-      systemPrompt,
-      capabilities: ["file_access" as const, "shell" as const],
-      model: this.deps.model,
-      budget: task.budget,
-      workingDir: worktreePath,
-    }
-```
-
-- [ ] **Step 4: Update ReviewerPlugin**
-
-Remove the manual artifact lookup (lines 54-55) and replace with `promptBuilder.build()`.
-
-Add to `ReviewerPluginDeps`:
-```typescript
-  readonly promptBuilder: AgentPromptBuilder
-```
-
-Add import:
-```typescript
-import type { AgentPromptBuilder } from "../../../use-cases/ports/AgentPromptBuilder"
-```
-
-Remove `artifactRepo` from deps (no longer needed).
-
-Replace the handle() method's prompt section:
-
-```typescript
-    const systemPrompt = await this.deps.promptBuilder.build(this.deps.systemPrompt, task.goalId)
-
-    const config = {
-      role: ROLES.REVIEWER,
-      systemPrompt,
-      capabilities: ["file_access" as const, "shell" as const],
-      model: this.deps.model,
-      budget: task.budget,
-      workingDir: this.deps.workspaceDir,
-    }
-```
-
-Keep the artifact creation code and review verdict logic.
-
-- [ ] **Step 5: Type-check**
-
-Run: `npx tsc --noEmit`
-Expected: Errors in `composition-root.ts` (missing `promptBuilder` in deps). This is expected — we wire it in Task 9.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/adapters/plugins/agents/ProductPlugin.ts src/adapters/plugins/agents/ArchitectPlugin.ts src/adapters/plugins/agents/DeveloperPlugin.ts src/adapters/plugins/agents/ReviewerPlugin.ts
-git commit -m "refactor: all agent plugins use ContextAwarePromptBuilder — no special cases"
-```
-
----
-
-## Task 8: Add Skip Phases + Retry with Hint
+## Task 7: Add Skip Phases + Retry with Hint
 
 **Files:**
 - Modify: `src/use-cases/CreateGoalFromCeo.ts`
-- Modify: `src/entities/Message.ts` (add phases to GoalCreatedMessage)
+- Modify: `src/entities/Message.ts` (add phases to GoalCreatedMessage + TaskRetryMessage)
 - Modify: `src/adapters/plugins/agents/SupervisorPlugin.ts`
-- Test: `tests/use-cases/CreateGoalFromCeo.test.ts`
 
 - [ ] **Step 1: Add phases to CreateGoalInput and GoalCreatedMessage**
 
@@ -1145,25 +1000,11 @@ git commit -m "feat: add skip-phases and retry-with-hint intervention controls"
 
 ---
 
-## Task 9: Delete Workspace Layer + Rewire composition-root
+## Task 8: Delete Workspace Layer
 
 **Files:**
-- Delete: `src/use-cases/WorkspaceRunManager.ts`
-- Delete: `src/adapters/workspace/GitCloneIsolator.ts`
-- Delete: `src/use-cases/ports/WorkspaceIsolator.ts`
-- Delete: `src/entities/WorkspaceRun.ts`
-- Delete: `src/use-cases/ports/WorkspaceRunRepository.ts`
-- Delete: `src/adapters/storage/InMemoryWorkspaceRunRepository.ts`
-- Delete: `src/use-cases/CleanupWorkspace.ts`
-- Delete: `src/use-cases/GetWorkspaceRunStatus.ts`
-- Delete: `src/use-cases/StopWorkspace.ts`
-- Delete: `src/infrastructure/http/routes/workspaceRoutes.ts`
-- Delete: `src/adapters/git/NodeGitRemote.ts`
-- Delete: `src/use-cases/ports/GitRemote.ts`
-- Delete: `src/adapters/git/GitHubPullRequestCreator.ts`
-- Delete: `src/use-cases/ports/PullRequestCreator.ts`
-- Modify: `src/infrastructure/config/composition-root.ts`
-- Modify: `src/infrastructure/http/createServer.ts`
+- Delete: 14 workspace-related files
+- Modify: `src/entities/Message.ts` (remove workspace messages)
 
 - [ ] **Step 1: Delete workspace files**
 
@@ -1188,10 +1029,120 @@ rm src/use-cases/ports/PullRequestCreator.ts
 
 Remove the `WorkspaceGoalDeliveredMessage`, `WorkspaceGoalFailedMessage`, `WorkspaceStatusChangedMessage` interfaces and their union members.
 
-- [ ] **Step 3: Remove workspace imports and wiring from composition-root.ts**
+- [ ] **Step 3: Commit**
 
-Remove these imports:
+```bash
+git add -A
+git commit -m "refactor: delete workspace cloning layer — 14 files removed"
+```
+
+---
+
+## Task 9: Update Plugins + Rewire composition-root
+
+This is the critical task — plugins and wiring change together so every commit compiles.
+
+**Files:**
+- Modify: `src/adapters/plugins/agents/ProductPlugin.ts`
+- Modify: `src/adapters/plugins/agents/ArchitectPlugin.ts`
+- Modify: `src/adapters/plugins/agents/DeveloperPlugin.ts`
+- Modify: `src/adapters/plugins/agents/ReviewerPlugin.ts`
+- Modify: `src/infrastructure/config/composition-root.ts`
+- Modify: `src/infrastructure/http/createServer.ts`
+
+- [ ] **Step 1: Update ProductPlugin**
+
+Add to `ProductPluginDeps`:
 ```typescript
+  readonly promptBuilder: AgentPromptBuilder
+```
+
+Add import:
+```typescript
+import type { AgentPromptBuilder } from "../../../use-cases/ports/AgentPromptBuilder"
+```
+
+Replace the config object in `handle()`:
+
+```typescript
+    const systemPrompt = await this.deps.promptBuilder.build(this.deps.systemPrompt, task.goalId)
+
+    const config = {
+      role: ROLES.PRODUCT,
+      systemPrompt,
+      capabilities: [] as const,
+      model: this.deps.model,
+      budget: task.budget,
+      workingDir: this.deps.workspaceDir,
+    }
+```
+
+- [ ] **Step 2: Update ArchitectPlugin**
+
+Add `promptBuilder: AgentPromptBuilder` to deps, add import. Remove `artifactRepo` from deps.
+
+Remove the manual artifact lookup (lines 54-59) and replace:
+
+```typescript
+    const systemPrompt = await this.deps.promptBuilder.build(this.deps.systemPrompt, task.goalId)
+
+    const config = {
+      role: ROLES.ARCHITECT,
+      systemPrompt,
+      capabilities: [] as const,
+      model: this.deps.model,
+      budget: task.budget,
+      workingDir: this.deps.workspaceDir,
+    }
+```
+
+Keep the artifact creation code — the architect still produces artifacts. It still needs `artifactRepo` and `createArtifact` for writing, but no longer reads artifacts directly.
+
+- [ ] **Step 3: Update DeveloperPlugin**
+
+Add `promptBuilder: AgentPromptBuilder` to deps, add import.
+
+Replace the config object in `handle()`:
+
+```typescript
+    const systemPrompt = await this.deps.promptBuilder.build(this.deps.systemPrompt, task.goalId)
+
+    const config = {
+      role: ROLES.DEVELOPER,
+      systemPrompt,
+      capabilities: ["file_access" as const, "shell" as const],
+      model: this.deps.model,
+      budget: task.budget,
+      workingDir: worktreePath,
+    }
+```
+
+- [ ] **Step 4: Update ReviewerPlugin**
+
+Add `promptBuilder: AgentPromptBuilder` to deps, add import. Remove `artifactRepo` from deps (for reading — keep `createArtifact` for writing review artifacts).
+
+Remove the manual artifact lookup (lines 54-55) and replace:
+
+```typescript
+    const systemPrompt = await this.deps.promptBuilder.build(this.deps.systemPrompt, task.goalId)
+
+    const config = {
+      role: ROLES.REVIEWER,
+      systemPrompt,
+      capabilities: ["file_access" as const, "shell" as const],
+      model: this.deps.model,
+      budget: task.budget,
+      workingDir: this.deps.workspaceDir,
+    }
+```
+
+Keep the artifact creation code and review verdict logic.
+
+- [ ] **Step 5: Rewire composition-root.ts**
+
+Remove workspace imports:
+```typescript
+// DELETE these imports:
 import { WorkspaceRunManager } from "../../use-cases/WorkspaceRunManager"
 import { GitCloneIsolator } from "../../adapters/workspace/GitCloneIsolator"
 import { NodeGitRemote } from "../../adapters/git/NodeGitRemote"
@@ -1199,18 +1150,18 @@ import { GitHubPullRequestCreator } from "../../adapters/git/GitHubPullRequestCr
 import { InMemoryWorkspaceRunRepository } from "../../adapters/storage/InMemoryWorkspaceRunRepository"
 ```
 
-Remove section 10b (lines 444-461) — workspace run management instantiation.
-
-Remove `workspaceManager` and `workspaceRunRepo` from `dashboardDeps`.
-
-Remove `await workspaceManager.stopAll()` from the `stop()` function.
-
 Add new imports:
 ```typescript
 import { NodeProjectContextProvider } from "../../adapters/context/NodeProjectContextProvider"
 import { GoalArtifactChain } from "../../use-cases/GoalArtifactChain"
 import { ContextAwarePromptBuilder } from "../../use-cases/ContextAwarePromptBuilder"
 ```
+
+Remove section 10b (workspace run management — lines 444-461).
+
+Remove `workspaceManager` and `workspaceRunRepo` from `dashboardDeps`.
+
+Remove `await workspaceManager.stopAll()` from the `stop()` function.
 
 Add after use-case instantiations:
 ```typescript
@@ -1221,47 +1172,45 @@ Add after use-case instantiations:
 
 Add `promptBuilder` to every agent plugin's deps:
 ```typescript
-  // ProductPlugin:
+  // In ProductPlugin deps:
   promptBuilder,
 
-  // ArchitectPlugin:
+  // In ArchitectPlugin deps:
   promptBuilder,
 
-  // DeveloperPlugin:
+  // In DeveloperPlugin deps:
   promptBuilder,
 
-  // ReviewerPlugin:
+  // In ReviewerPlugin deps:
   promptBuilder,
 ```
 
-Remove `artifactRepo` from ArchitectPlugin and ReviewerPlugin deps (they no longer read artifacts directly — the prompt builder does it).
-
-- [ ] **Step 4: Remove workspace from createServer.ts**
+- [ ] **Step 6: Clean up createServer.ts**
 
 Remove `workspaceManager` and `workspaceRunRepo` from `DashboardDeps` interface.
 
-Remove the workspace route line:
+Remove the workspace route:
 ```typescript
   app.use("/api/workspace", workspaceRoutes(...))
 ```
 
 Remove workspace references from goal routes (the `ws = deps.workspaceManager.getActiveSystem()` calls). Goals now run on the main system directly.
 
-- [ ] **Step 5: Type-check**
+- [ ] **Step 7: Type-check**
 
 Run: `npx tsc --noEmit`
-Expected: No errors.
+Expected: No errors. Every plugin has `promptBuilder`, every dep is wired.
 
-- [ ] **Step 6: Run all tests**
+- [ ] **Step 8: Run all tests**
 
 Run: `npx vitest run`
 Expected: All backend tests pass.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add -A
-git commit -m "refactor: remove workspace cloning layer, wire ContextAwarePromptBuilder into all agents"
+git commit -m "refactor: unify all agent plugins with ContextAwarePromptBuilder, remove workspace wiring"
 ```
 
 ---
@@ -1299,8 +1248,7 @@ async function main(): Promise<void> {
     console.log(`\n  Dashboard: http://localhost:${httpPort}\n`)
   })
 
-  // Subscribe to key messages and print progress
-  // ... (keep existing progress logging)
+  // Keep existing progress logging subscription (bus.subscribe for progressTypes)
 
   // Graceful shutdown
   const shutdown = async () => {
@@ -1317,7 +1265,7 @@ async function main(): Promise<void> {
 
 Remove the `readline` import, `question` helper, goal creation logic, and completion/timeout waiters. Goals are now created through the dashboard only.
 
-- [ ] **Step 2: Type-check and verify**
+- [ ] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit`
 Expected: No errors.
@@ -1338,7 +1286,7 @@ git commit -m "refactor: CLI starts dashboard server only — no readline prompt
 
 - [ ] **Step 1: Add POST /api/tasks/:taskId/retry endpoint**
 
-In the goal or task routes, add:
+In the task routes, add:
 
 ```typescript
   app.post("/api/tasks/:taskId/retry", async (req, res) => {
@@ -1349,19 +1297,20 @@ In the goal or task routes, add:
       return res.status(400).json({ error: "hint is required" })
     }
 
-    await deps.bus.emit({
+    const message: Message = {
       id: createMessageId(),
-      type: "task.retry" as any,
+      type: "task.retry",
       taskId,
       hint: hint.trim(),
       timestamp: new Date(),
-    })
+    }
+    await deps.bus.emit(message)
 
     res.json({ ok: true })
   })
 ```
 
-Note: Import `createMessageId` at the top of the file if not already imported.
+Import `createMessageId` and `Message` at the top of the file if not already imported. Note: no `as any` — `task.retry` is a proper member of the Message union (added in Task 7).
 
 - [ ] **Step 2: Type-check**
 
@@ -1377,43 +1326,42 @@ git commit -m "feat: add POST /api/tasks/:taskId/retry endpoint for retry-with-h
 
 ---
 
-## Task 12: Final Integration Test
+## Task 12: Final Verification
 
 **Files:**
-- Run existing tests + manual verification
+- Modify: `src/use-cases/index.ts` (exports)
+- Run: full test suite + type check + dead reference scan
 
-- [ ] **Step 1: Run full test suite**
+- [ ] **Step 1: Add exports for new modules**
 
-Run: `npx vitest run`
-Expected: All backend tests pass.
-
-- [ ] **Step 2: Type-check entire project**
-
-Run: `npx tsc --noEmit`
-Expected: No errors.
-
-- [ ] **Step 3: Verify exports**
-
-Check `src/use-cases/index.ts` — add exports for new modules if needed:
+In `src/use-cases/index.ts`, add:
 
 ```typescript
 export * from "./GoalArtifactChain"
 export * from "./ContextAwarePromptBuilder"
 ```
 
-- [ ] **Step 4: Clean up any unused imports**
-
-Search for any remaining references to deleted workspace files:
+- [ ] **Step 2: Scan for dead references to deleted files**
 
 ```bash
 grep -r "WorkspaceRunManager\|GitCloneIsolator\|WorkspaceIsolator\|WorkspaceRun\|NodeGitRemote\|GitHubPullRequestCreator" src/ --include="*.ts"
 ```
 
-Fix any remaining references.
+Expected: No matches. If any remain, remove them.
 
-- [ ] **Step 5: Final commit**
+- [ ] **Step 3: Type-check entire project**
+
+Run: `npx tsc --noEmit`
+Expected: No errors.
+
+- [ ] **Step 4: Run full test suite**
+
+Run: `npx vitest run`
+Expected: All backend tests pass.
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add -A
-git commit -m "chore: final cleanup — exports, unused imports, integration verification"
+git commit -m "chore: final cleanup — exports, dead reference scan, full verification"
 ```
