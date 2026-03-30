@@ -24,7 +24,9 @@ export class DetectProjectConfig {
     const hasPackageJson = await this.fs.exists("package.json")
     if (hasPackageJson) {
       const hasTsConfig = await this.fs.exists("tsconfig.json")
-      const language = hasTsConfig ? "typescript" : "javascript"
+      const allFiles = await this.fs.glob("**/*")
+      const hasTsFiles = allFiles.some(f => f.endsWith(".ts") || f.endsWith(".tsx"))
+      const language = hasTsConfig || hasTsFiles ? "typescript" : "javascript"
       const sourceRoots = await this.detectSourceRoots()
       return createProjectConfig({
         language,
