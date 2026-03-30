@@ -7,6 +7,7 @@ import type { TaskRepository } from "../../../use-cases/ports/TaskRepository"
 import type { ArtifactRepository } from "../../../use-cases/ports/ArtifactRepository"
 import type { MessagePort } from "../../../use-cases/ports/MessagePort"
 import type { CreateArtifactUseCase } from "../../../use-cases/CreateArtifact"
+import type { AgentPromptBuilder } from "../../../use-cases/ports/AgentPromptBuilder"
 import { createArtifact } from "../../../entities/Artifact"
 import { ROLES } from "../../../entities/AgentRole"
 
@@ -18,6 +19,7 @@ export interface ArchitectPluginDeps {
   readonly artifactRepo: ArtifactRepository
   readonly createArtifact: CreateArtifactUseCase
   readonly bus: MessagePort
+  readonly promptBuilder: AgentPromptBuilder
   readonly systemPrompt: string
   readonly model: string
   readonly workspaceDir: string
@@ -51,16 +53,11 @@ export class ArchitectPlugin implements PluginIdentity, Lifecycle, PluginMessage
     const task = await this.deps.taskRepo.findById(message.taskId)
     if (!task) return
 
-    // Read spec artifact if available — look up by artifact IDs attached to the task
-    const artifactObjects = await Promise.all(
-      task.artifacts.map(id => this.deps.artifactRepo.findById(id))
-    )
-    const specArtifact = artifactObjects.find(a => a !== null && a.kind === "spec") ?? null
-    const specContext = specArtifact ? `\n\nSpec:\n${specArtifact.content}` : ""
+    const systemPrompt = await this.deps.promptBuilder.build(this.deps.systemPrompt, task.goalId)
 
     const config = {
       role: ROLES.ARCHITECT,
-      systemPrompt: this.deps.systemPrompt + specContext,
+      systemPrompt,
       capabilities: [],
       model: this.deps.model,
       budget: task.budget,

@@ -7,6 +7,7 @@ import type { TaskRepository } from "../../../use-cases/ports/TaskRepository"
 import type { MessagePort } from "../../../use-cases/ports/MessagePort"
 import type { WorktreeManager } from "../../../use-cases/ports/WorktreeManager"
 import type { AgentRegistry } from "../../../use-cases/ports/AgentRegistry"
+import type { AgentPromptBuilder } from "../../../use-cases/ports/AgentPromptBuilder"
 import { ROLES } from "../../../entities/AgentRole"
 
 export interface DeveloperPluginDeps {
@@ -14,6 +15,7 @@ export interface DeveloperPluginDeps {
   readonly projectId: ProjectId
   readonly executor: AgentExecutor
   readonly taskRepo: TaskRepository
+  readonly promptBuilder: AgentPromptBuilder
   readonly systemPrompt: string
   readonly model: string
   readonly bus: MessagePort
@@ -69,9 +71,11 @@ export class DeveloperPlugin implements PluginIdentity, Lifecycle, PluginMessage
     const updatedTask = { ...task, branch: branchName, version: task.version + 1 }
     await this.deps.taskRepo.update(updatedTask)
 
+    const systemPrompt = await this.deps.promptBuilder.build(this.deps.systemPrompt, task.goalId)
+
     const config = {
       role: ROLES.DEVELOPER,
-      systemPrompt: this.deps.systemPrompt,
+      systemPrompt,
       capabilities: ["file_access" as const, "shell" as const],
       model: this.deps.model,
       budget: task.budget,

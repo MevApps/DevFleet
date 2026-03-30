@@ -7,6 +7,7 @@ import type { TaskRepository } from "../../../use-cases/ports/TaskRepository"
 import type { ArtifactRepository } from "../../../use-cases/ports/ArtifactRepository"
 import type { MessagePort } from "../../../use-cases/ports/MessagePort"
 import type { CreateArtifactUseCase } from "../../../use-cases/CreateArtifact"
+import type { AgentPromptBuilder } from "../../../use-cases/ports/AgentPromptBuilder"
 import { createArtifact } from "../../../entities/Artifact"
 import { ROLES } from "../../../entities/AgentRole"
 
@@ -18,6 +19,7 @@ export interface ReviewerPluginDeps {
   readonly artifactRepo: ArtifactRepository
   readonly createArtifact: CreateArtifactUseCase
   readonly bus: MessagePort
+  readonly promptBuilder: AgentPromptBuilder
   readonly systemPrompt: string
   readonly model: string
   readonly workspaceDir: string
@@ -51,12 +53,11 @@ export class ReviewerPlugin implements PluginIdentity, Lifecycle, PluginMessageH
     const task = await this.deps.taskRepo.findById(message.taskId)
     if (!task) return
 
-    const artifacts = await this.deps.artifactRepo.findByTaskId(task.id)
-    const artifactContext = artifacts.map(a => `[${a.kind}]:\n${a.content}`).join("\n\n---\n\n")
+    const systemPrompt = await this.deps.promptBuilder.build(this.deps.systemPrompt, task.goalId)
 
     const config = {
       role: ROLES.REVIEWER,
-      systemPrompt: this.deps.systemPrompt + (artifactContext ? `\n\nArtifacts for review:\n${artifactContext}` : ""),
+      systemPrompt,
       capabilities: ["file_access" as const, "shell" as const],
       model: this.deps.model,
       budget: task.budget,

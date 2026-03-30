@@ -10,7 +10,6 @@ import { InMemoryKeepDiscardRepository } from "../../adapters/storage/InMemoryKe
 import { InMemoryInsightRepository } from "../../adapters/storage/InMemoryInsightRepository"
 import { InMemoryBudgetConfigStore } from "../../adapters/storage/InMemoryBudgetConfigStore"
 import { InMemoryAlertPreferencesStore } from "../../adapters/storage/InMemoryAlertPreferencesStore"
-import { InMemoryWorkspaceRunRepository } from "../../adapters/storage/InMemoryWorkspaceRunRepository"
 import { InMemoryBus } from "../../adapters/messaging/InMemoryBus"
 import { NodeFileSystem } from "../../adapters/filesystem/NodeFileSystem"
 import { NodeShellExecutor } from "../../adapters/shell/NodeShellExecutor"
@@ -48,10 +47,9 @@ import { AcceptInsight } from "../../use-cases/AcceptInsight"
 import { DismissInsight } from "../../use-cases/DismissInsight"
 import { DetectProjectConfig } from "../../use-cases/DetectProjectConfig"
 import { EvaluateAlert, type AlertRule } from "../../use-cases/EvaluateAlert"
-import { WorkspaceRunManager } from "../../use-cases/WorkspaceRunManager"
-import { GitCloneIsolator } from "../../adapters/workspace/GitCloneIsolator"
-import { NodeGitRemote } from "../../adapters/git/NodeGitRemote"
-import { GitHubPullRequestCreator } from "../../adapters/git/GitHubPullRequestCreator"
+import { NodeProjectContextProvider } from "../../adapters/context/NodeProjectContextProvider"
+import { GoalArtifactChain } from "../../use-cases/GoalArtifactChain"
+import { ContextAwarePromptBuilder } from "../../use-cases/ContextAwarePromptBuilder"
 import { LiveFloorPresenter } from "../../adapters/presenters/LiveFloorPresenter"
 import { PipelinePresenter } from "../../adapters/presenters/PipelinePresenter"
 import { MetricsPresenter } from "../../adapters/presenters/MetricsPresenter"
@@ -296,7 +294,14 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   // Ops uses a deterministic executor, no system prompt needed
 
   // -------------------------------------------------------------------------
-  // 8. Plugins
+  // 8. Prompt builder
+  // -------------------------------------------------------------------------
+  const contextProvider = new NodeProjectContextProvider(config.workspaceDir)
+  const artifactChain = new GoalArtifactChain(taskRepo, artifactRepo, DEFAULT_PIPELINE.phases)
+  const promptBuilder = new ContextAwarePromptBuilder(contextProvider, artifactChain)
+
+  // -------------------------------------------------------------------------
+  // 9. Plugins
   // -------------------------------------------------------------------------
   const supervisorPlugin = new SupervisorPlugin({
     agentId: supervisorId,
@@ -327,6 +332,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     artifactRepo,
     createArtifact,
     bus,
+    promptBuilder,
     systemPrompt: productPrompt,
     model: developerModel,
     workspaceDir: config.workspaceDir,
@@ -340,6 +346,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     artifactRepo,
     createArtifact,
     bus,
+    promptBuilder,
     systemPrompt: architectPrompt,
     model: developerModel,
     workspaceDir: config.workspaceDir,
@@ -350,6 +357,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     projectId,
     executor: agentExecutor,
     taskRepo,
+    promptBuilder,
     systemPrompt: developerPrompt,
     model: developerModel,
     bus,
@@ -366,6 +374,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     artifactRepo,
     createArtifact,
     bus,
+    promptBuilder,
     systemPrompt: reviewerPrompt,
     model: reviewerModel,
     workspaceDir: config.workspaceDir,
@@ -440,26 +449,6 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const evaluateAlert = new EvaluateAlert(notificationPort, alertPreferencesStore, bus, alertRules)
   bus.subscribe({ types: alertRules.map(r => r.trigger) }, (message) => evaluateAlert.execute(message))
 
-  // -------------------------------------------------------------------------
-  // 10b. Workspace run management
-  // -------------------------------------------------------------------------
-  const workspaceRunRepo = new InMemoryWorkspaceRunRepository()
-  const workspaceIsolator = new GitCloneIsolator(shellFactory)
-  const gitRemote = new NodeGitRemote(shellFactory)
-  const prCreator = new GitHubPullRequestCreator(shellFactory)
-  const autoMerge = process.env["DEVFLEET_AUTO_MERGE"] === "true"
-  const workspaceManager = new WorkspaceRunManager({
-    repo: workspaceRunRepo,
-    isolator: workspaceIsolator,
-    fsFactory: (rootPath: string) => new NodeFileSystem(rootPath),
-    gitRemote,
-    prCreator,
-    autoMerge,
-    buildSystem,
-    parentBus: bus,
-    mockMode: useMock,
-  })
-
   const dashboardDeps: DashboardDeps = {
     agentRegistry,
     goalRepo,
@@ -479,8 +468,6 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     computeQuality: computeQuality,
     computeTimings: computeTimings,
     alertPreferencesStore,
-    workspaceManager,
-    workspaceRunRepo,
   }
 
   // I2: DetectStuckAgent runs on an interval so stuck agents are caught without polling.
@@ -510,7 +497,6 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
         clearInterval(stuckAgentInterval)
         stuckAgentInterval = null
       }
-      await workspaceManager.stopAll()
       await worktreeManager.cleanupAll()
       sseManager.shutdown()
       await pluginRegistry.stopAll()

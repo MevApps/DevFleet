@@ -1,13 +1,11 @@
 import { Router } from "express"
 import type { GoalRepository } from "../../../use-cases/ports/GoalRepository"
 import type { CreateGoalFromCeo } from "../../../use-cases/CreateGoalFromCeo"
-import type { WorkspaceRunManager } from "../../../use-cases/WorkspaceRunManager"
 import { toGoalDTO } from "../../../adapters/presenters/mappers"
 
 export function goalRoutes(
   goals: GoalRepository,
   createGoal: CreateGoalFromCeo,
-  workspaceManager?: WorkspaceRunManager,
 ): Router {
   const router = Router()
 
@@ -29,26 +27,15 @@ export function goalRoutes(
 
       console.log("[goalRoutes] POST /goals body:", JSON.stringify(body))
 
-      // When a workspace is active, use its CreateGoalFromCeo
-      const wsCreateGoal = workspaceManager
-        ? await workspaceManager.getActiveCreateGoal()
-        : null
-      console.log("[goalRoutes] wsCreateGoal:", wsCreateGoal ? "workspace" : "main")
-      const effectiveCreateGoal = wsCreateGoal ?? createGoal
-
       console.log("[goalRoutes] calling execute...")
-      const result = await effectiveCreateGoal.execute({ description, maxTokens, maxCostUsd })
+      const result = await createGoal.execute({ description, maxTokens, maxCostUsd })
       console.log("[goalRoutes] execute returned, ok:", result.ok)
       if (!result.ok) {
         res.status(400).json({ error: result.error })
         return
       }
 
-      const active = workspaceManager ? await workspaceManager.findActive() : null
-      res.status(201).json({
-        goal: toGoalDTO(result.value),
-        ...(active ? { targetedWorkspace: active.id } : {}),
-      })
+      res.status(201).json({ goal: toGoalDTO(result.value) })
     } catch (err) {
       next(err)
     }

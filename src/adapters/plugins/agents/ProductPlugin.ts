@@ -7,6 +7,7 @@ import type { TaskRepository } from "../../../use-cases/ports/TaskRepository"
 import type { ArtifactRepository } from "../../../use-cases/ports/ArtifactRepository"
 import type { MessagePort } from "../../../use-cases/ports/MessagePort"
 import type { CreateArtifactUseCase } from "../../../use-cases/CreateArtifact"
+import type { AgentPromptBuilder } from "../../../use-cases/ports/AgentPromptBuilder"
 import { createArtifact } from "../../../entities/Artifact"
 import { ROLES } from "../../../entities/AgentRole"
 
@@ -18,6 +19,7 @@ export interface ProductPluginDeps {
   readonly artifactRepo: ArtifactRepository
   readonly createArtifact: CreateArtifactUseCase
   readonly bus: MessagePort
+  readonly promptBuilder: AgentPromptBuilder
   readonly systemPrompt: string
   readonly model: string
   readonly workspaceDir: string
@@ -51,9 +53,11 @@ export class ProductPlugin implements PluginIdentity, Lifecycle, PluginMessageHa
     const task = await this.deps.taskRepo.findById(message.taskId)
     if (!task) return
 
+    const systemPrompt = await this.deps.promptBuilder.build(this.deps.systemPrompt, task.goalId)
+
     const config = {
       role: ROLES.PRODUCT,
-      systemPrompt: this.deps.systemPrompt,
+      systemPrompt,
       capabilities: [],
       model: this.deps.model,
       budget: task.budget,
