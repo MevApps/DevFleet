@@ -1,15 +1,13 @@
 // src/app/layout-shell.tsx
 "use client"
-import { useEffect, useRef } from "react"
+import { useEffect } from "react"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { TopBar } from "@/components/layout/top-bar"
 import { InspectorPanel } from "@/components/layout/inspector-panel"
-import { WorkspaceGate } from "@/components/composites/workspace-gate"
 import { useSSE } from "@/lib/useSSE"
 import { useUIStore } from "@/lib/ui-store"
 import { useWorkspaceStore } from "@/lib/workspace-store"
 import { useDashboardStore } from "@/lib/store"
-import { useFloorStore } from "@/lib/floor-store"
 import { api } from "@/lib/api"
 
 function logFetchError(label: string) {
@@ -24,7 +22,6 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   const fetchMetrics = useDashboardStore((s) => s.fetchMetrics)
   const fetchAlerts = useDashboardStore((s) => s.fetchAlerts)
   const wsRun = useWorkspaceStore((s) => s.run)
-  const hasAutoNavigated = useRef(false)
 
   useEffect(() => {
     document.documentElement.classList.remove("dark", "light")
@@ -47,14 +44,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (wsRun?.status === "active") {
       fetchLiveFloor().catch(logFetchError("fetchLiveFloor"))
-      fetchPipeline()
-        .then(() => {
-          if (!hasAutoNavigated.current && useDashboardStore.getState().goals.length === 0) {
-            hasAutoNavigated.current = true
-            useFloorStore.getState().setActiveSection("new-goal")
-          }
-        })
-        .catch(logFetchError("fetchPipeline"))
+      fetchPipeline().catch(logFetchError("fetchPipeline"))
       fetchMetrics().catch(logFetchError("fetchMetrics"))
       fetchAlerts().catch(logFetchError("fetchAlerts"))
     }
@@ -67,9 +57,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
         <TopBar />
         <div className="flex flex-1 overflow-hidden">
           <main className="flex-1 overflow-auto p-6">
-            <WorkspaceGate>
-              {() => children}
-            </WorkspaceGate>
+            {children}
           </main>
           <InspectorPanel />
         </div>

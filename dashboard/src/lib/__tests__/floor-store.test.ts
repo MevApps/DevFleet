@@ -1,8 +1,23 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import { useFloorStore } from "../floor-store"
+
+const SECTION_KEY = "devfleet-active-section"
+
+const storage = new Map<string, string>()
+const mockLocalStorage = {
+  getItem: vi.fn((key: string) => storage.get(key) ?? null),
+  setItem: vi.fn((key: string, value: string) => storage.set(key, value)),
+  removeItem: vi.fn((key: string) => storage.delete(key)),
+  clear: vi.fn(() => storage.clear()),
+  get length() { return storage.size },
+  key: vi.fn(() => null),
+}
+Object.defineProperty(globalThis, "localStorage", { value: mockLocalStorage, writable: true })
 
 describe("useFloorStore", () => {
   beforeEach(() => {
+    storage.clear()
+    vi.clearAllMocks()
     useFloorStore.setState({
       viewMode: "stream",
       focusedGoalId: null,
@@ -58,5 +73,25 @@ describe("useFloorStore", () => {
     useFloorStore.getState().focusGoal("goal-1")
     useFloorStore.getState().setActiveSection("analytics")
     expect(useFloorStore.getState().focusedGoalId).toBeNull()
+  })
+
+  describe("localStorage persistence", () => {
+    it("setActiveSection persists to localStorage", () => {
+      useFloorStore.getState().setActiveSection("analytics")
+      expect(mockLocalStorage.setItem).toHaveBeenCalledWith(SECTION_KEY, "analytics")
+      expect(storage.get(SECTION_KEY)).toBe("analytics")
+    })
+
+    it("focusGoal persists 'floor' to localStorage", () => {
+      useFloorStore.getState().focusGoal("goal-1")
+      expect(mockLocalStorage.setItem).toHaveBeenCalledWith(SECTION_KEY, "floor")
+      expect(storage.get(SECTION_KEY)).toBe("floor")
+    })
+
+    it("setActiveSection updates on each call", () => {
+      useFloorStore.getState().setActiveSection("analytics")
+      useFloorStore.getState().setActiveSection("health")
+      expect(storage.get(SECTION_KEY)).toBe("health")
+    })
   })
 })
