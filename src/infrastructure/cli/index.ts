@@ -1,10 +1,6 @@
-import * as readline from "node:readline"
 import * as http from "node:http"
 import { buildSystem } from "../config/composition-root"
 import { createServer } from "../http/createServer"
-import { createGoal } from "../../entities/Goal"
-import { createGoalId, createMessageId } from "../../entities/ids"
-import { createBudget } from "../../entities/Budget"
 import type { Message } from "../../entities/Message"
 
 const WORKSPACE_DIR = process.env["WORKSPACE_DIR"] ?? process.cwd()
@@ -19,8 +15,8 @@ function logProgress(icon: string, message: string): void {
 }
 
 async function main(): Promise<void> {
-  console.log("DevFleet CLI — Phase 3 Dashboard + Real-Time")
-  console.log("============================================")
+  console.log("DevFleet — Visual Claude Code")
+  console.log("=============================")
 
   if (MOCK_MODE) {
     console.log("(DEVFLEET_MOCK=true — using mock agent sessions)")
@@ -29,23 +25,20 @@ async function main(): Promise<void> {
   const system = await buildSystem({
     workspaceDir: WORKSPACE_DIR,
     mockMode: MOCK_MODE,
-    developerModel: process.env["DEVELOPER_MODEL"] ?? "claude-3-5-sonnet-20241022",
-    supervisorModel: process.env["SUPERVISOR_MODEL"] ?? "claude-3-5-sonnet-20241022",
-    reviewerModel: process.env["REVIEWER_MODEL"] ?? "claude-3-5-sonnet-20241022",
+    developerModel: process.env["DEVELOPER_MODEL"] ?? "claude-sonnet-4-20250514",
+    supervisorModel: process.env["SUPERVISOR_MODEL"] ?? "claude-sonnet-4-20250514",
+    reviewerModel: process.env["REVIEWER_MODEL"] ?? "claude-sonnet-4-20250514",
     pipelineTimeoutMs: parseInt(process.env["PIPELINE_TIMEOUT_MS"] ?? "300000", 10),
     maxRetries: parseInt(process.env["MAX_RETRIES"] ?? "2", 10),
   })
 
   await system.start()
 
-  // ---------------------------------------------------------------------------
-  // HTTP API server
-  // ---------------------------------------------------------------------------
   const httpPort = parseInt(process.env["HTTP_PORT"] ?? "3100", 10)
   const app = createServer(system.dashboardDeps)
   const server = http.createServer(app)
   server.listen(httpPort, () => {
-    console.log(`HTTP API listening on http://localhost:${httpPort}`)
+    console.log(`\n  Dashboard: http://localhost:${httpPort}\n`)
   })
 
   // ---------------------------------------------------------------------------
@@ -111,86 +104,18 @@ async function main(): Promise<void> {
     }
   })
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  })
-
-  const question = (prompt: string): Promise<string> =>
-    new Promise(resolve => rl.question(prompt, resolve))
-
-  try {
-    const goalDescription = await question("\nEnter your goal: ")
-    if (!goalDescription.trim()) {
-      console.log("No goal entered. Exiting.")
-      return
-    }
-
-    // Create goal
-    const goalId = createGoalId()
-    const goal = createGoal({
-      id: goalId,
-      description: goalDescription.trim(),
-      totalBudget: createBudget({ maxTokens: 100_000, maxCostUsd: 10.0 }),
-      status: "active",
-    })
-    await system.goalRepo.create(goal)
-
-    console.log(`\nPipeline started for goal: ${goalId}`)
-    console.log(`Timeout: ${system.pipelineTimeoutMs / 1000}s\n`)
-
-    // Set up completion/abandonment waiters
-    const done = new Promise<{ completed: boolean }>((resolve) => {
-      system.bus.subscribe({ types: ["goal.completed"] }, async (msg) => {
-        if (msg.type === "goal.completed" && msg.goalId === goalId) {
-          resolve({ completed: true })
-        }
-      })
-      system.bus.subscribe({ types: ["goal.abandoned"] }, async (msg) => {
-        if (msg.type === "goal.abandoned" && msg.goalId === goalId) {
-          resolve({ completed: false })
-        }
-      })
-    })
-
-    // Set pipeline timeout
-    const timeout = new Promise<{ completed: boolean }>((resolve) => {
-      setTimeout(async () => {
-        logProgress("!", `Pipeline timeout (${system.pipelineTimeoutMs / 1000}s elapsed)`)
-        await system.bus.emit({
-          id: createMessageId(),
-          type: "goal.abandoned",
-          goalId,
-          reason: `Pipeline timeout after ${system.pipelineTimeoutMs}ms`,
-          timestamp: new Date(),
-        })
-        resolve({ completed: false })
-      }, system.pipelineTimeoutMs)
-    })
-
-    // Emit goal.created to kick off the pipeline
-    await system.bus.emit({
-      id: createMessageId(),
-      type: "goal.created",
-      goalId,
-      description: goal.description,
-      timestamp: new Date(),
-    })
-
-    // Wait for completion or timeout
-    const result = await Promise.race([done, timeout])
-
-    if (result.completed) {
-      console.log("\nPipeline completed successfully.")
-    } else {
-      console.error("\nPipeline did not complete.")
-      process.exitCode = 1
-    }
-  } finally {
-    rl.close()
+  // ---------------------------------------------------------------------------
+  // Graceful shutdown
+  // ---------------------------------------------------------------------------
+  const shutdown = async () => {
+    console.log("\nShutting down...")
     server.close()
     await system.stop()
+    process.exit(0)
   }
+
+  process.on("SIGINT", shutdown)
+  process.on("SIGTERM", shutdown)
 }
 
 main().catch(err => {
