@@ -110,7 +110,7 @@ interface AgentPromptBuilder {
   [content]
   ```
 
-**Implementation:** One class, `DefaultAgentPromptBuilder`, in `src/use-cases/`. Depends on `ProjectContextProvider` and `ArtifactChain`. Every plugin receives this as a dependency and calls `build(rolePrompt, goalId)`. No prompt-assembly code in plugins.
+**Implementation:** One class, `ContextAwarePromptBuilder`, in `src/use-cases/`. Depends on `ProjectContextProvider` and `ArtifactChain`. Every plugin receives this as a dependency and calls `build(rolePrompt, goalId)`. No prompt-assembly code in plugins.
 
 #### How Agents Use It
 
@@ -233,7 +233,7 @@ The workspace cloning/isolation layer is removed entirely. DevFleet runs in the 
 | `ArtifactChain` port | use-cases/ports | Interface for gathering prior phase artifacts |
 | `GoalArtifactChain` | use-cases | Implements ArtifactChain — returns structured `PhaseArtifact[]` |
 | `AgentPromptBuilder` port | use-cases/ports | Interface for building agent system prompts |
-| `DefaultAgentPromptBuilder` | use-cases | Combines role prompt + project context + prior artifacts into one prompt. Used by all plugins. |
+| `ContextAwarePromptBuilder` | use-cases | Combines role prompt + project context + prior artifacts into one prompt. Used by all plugins. |
 | `AgentToolCallMessage` | entities/Message | New structured message type for agent tool calls |
 
 ## Pre-requisite: Bug Fix (Do Before Rewrite)
