@@ -56,48 +56,71 @@ interface ProjectContext {
 
 #### ArtifactChain
 
-Given a goal, collects all artifacts produced by completed phases — in pipeline order.
+Given a goal, collects all artifacts produced by completed phases — in pipeline order. Returns structured data so consumers can filter or format as needed.
 
 ```typescript
 interface ArtifactChain {
-  buildContext(goalId: GoalId): Promise<string>
+  gather(goalId: GoalId): Promise<readonly PhaseArtifact[]>
+}
+
+interface PhaseArtifact {
+  readonly phase: string
+  readonly kind: ArtifactKind
+  readonly content: string
 }
 ```
 
 **Behavior:**
 - Fetches all tasks for the goal from `TaskRepository`
 - For each completed task (in pipeline phase order), fetches its artifacts from `ArtifactRepository`
-- Formats them into a single string:
-  ```
-  ## Spec (from product agent)
-  [spec artifact content]
-
-  ## Plan (from architect agent)
-  [plan artifact content]
-  ```
-- Returns empty string if no prior artifacts exist (first phase in pipeline)
+- Returns an ordered array of `PhaseArtifact` — preserving structure (phase, kind, content) so consumers can filter by kind or format as they choose
+- Returns empty array if no prior artifacts exist (first phase in pipeline)
 
 **Implementation:** One class, `GoalArtifactChain`, in `src/use-cases/`. Depends on `TaskRepository`, `ArtifactRepository`, and the pipeline phase list. Pure use-case layer — no infrastructure dependencies.
 
-#### How Agents Use It
+#### AgentPromptBuilder
 
-Every agent plugin builds its system prompt the same way:
+If every plugin builds its system prompt the same way, that logic should exist once. `AgentPromptBuilder` takes the role prompt, project context, and prior artifacts — returns a complete system prompt.
 
 ```typescript
-const projectContext = await this.deps.contextProvider.getContext()
-const priorWork = await this.deps.artifactChain.buildContext(task.goalId)
-
-const systemPrompt = [
-  this.deps.basePrompt,               // role-specific instructions
-  projectContext.claudeMd,             // project conventions
-  `Language: ${projectContext.projectConfig.language}`,
-  `Source roots: ${projectContext.projectConfig.sourceRoots.join(", ")}`,
-  `File structure:\n${projectContext.fileTree}`,
-  priorWork,                           // spec, plan, etc. from earlier phases
-].filter(Boolean).join("\n\n")
+interface AgentPromptBuilder {
+  build(rolePrompt: string, goalId: GoalId): Promise<string>
+}
 ```
 
-No special cases. DeveloperPlugin, ArchitectPlugin, ReviewerPlugin — all use the same two dependencies.
+**Behavior:**
+- Calls `ProjectContextProvider.getContext()` for project knowledge
+- Calls `ArtifactChain.gather(goalId)` for prior phase output
+- Formats everything into a single prompt string:
+  ```
+  [role-specific instructions]
+
+  [CLAUDE.md content]
+
+  Language: typescript
+  Source roots: src, dashboard/src
+
+  File structure:
+  [depth-limited tree]
+
+  ## Prior work
+  ### Spec (spec)
+  [content]
+  ### Plan (plan)
+  [content]
+  ```
+
+**Implementation:** One class, `DefaultAgentPromptBuilder`, in `src/use-cases/`. Depends on `ProjectContextProvider` and `ArtifactChain`. Every plugin receives this as a dependency and calls `build(rolePrompt, goalId)`. No prompt-assembly code in plugins.
+
+#### How Agents Use It
+
+Every agent plugin calls one method:
+
+```typescript
+const systemPrompt = await this.deps.promptBuilder.build(this.deps.basePrompt, task.goalId)
+```
+
+One line. No special cases. DeveloperPlugin, ArchitectPlugin, ReviewerPlugin — all use the same dependency.
 
 ### 2. Progress Contract
 
@@ -107,30 +130,33 @@ No special cases. DeveloperPlugin, ArchitectPlugin, ReviewerPlugin — all use t
 
 The `ClaudeAgentSdkAdapter` currently ignores `stream_event` messages (logged as "UNKNOWN type"). These contain the actual tool calls — what the agent is reading, writing, running.
 
-**Change:** Parse `stream_event` messages to extract tool calls. When a tool call completes, emit an `agent.activity` message on the bus.
+**Change:** Parse `stream_event` messages to extract tool calls. When a tool call completes, emit a structured `agent.tool_call` message on the bus.
 
 ```typescript
-// New message type
-interface AgentActivityMessage extends BaseMessage {
-  readonly type: "agent.activity"
+// New message type — structured domain event, NOT human-readable text
+interface AgentToolCallMessage extends BaseMessage {
+  readonly type: "agent.tool_call"
   readonly agentId: AgentId
   readonly taskId: TaskId
-  readonly action: string  // "Reading app-sidebar.tsx", "Writing user-avatar.tsx", "Running npm test"
+  readonly tool: string    // "Read", "Write", "Edit", "Bash", "Glob", "Grep"
+  readonly target: string  // file path, command, or pattern
 }
 ```
+
+The domain emits structured data. The **dashboard** (presentation layer) formats it for humans:
+- `{tool: "Read", target: "src/components/button.tsx"}` → "Reading button.tsx"
+- `{tool: "Write", target: "src/components/avatar.tsx"}` → "Creating avatar.tsx"
+- `{tool: "Bash", target: "npm test"}` → "Running npm test"
+- `{tool: "Grep", target: "avatar"}` → "Searching for 'avatar'"
+
+This keeps the domain event clean and structured. Different UIs can format it differently.
 
 **How it works:**
 - The SDK streams `stream_event` messages containing Anthropic API content blocks. The exact structure may evolve with SDK versions — parse defensively with fallbacks.
 - Look for tool_use content blocks: extract the tool name and first input argument.
-- On tool completion, emit `agent.activity` with a human-readable summary:
-  - `Read` + file_path → "Reading src/components/button.tsx"
-  - `Write` + file_path → "Creating src/components/avatar.tsx"
-  - `Edit` + file_path → "Editing src/components/sidebar.tsx"
-  - `Bash` + command → "Running npm test"
-  - `Glob` + pattern → "Searching for *.tsx files"
-  - `Grep` + pattern → "Searching for 'avatar' in code"
+- On tool completion, emit `agent.tool_call` with the structured data.
 
-**Dashboard side:** The SSE stream already forwards bus messages. The dashboard subscribes to `agent.activity` and shows a live feed per agent. This replaces the current "in_progress" black box with real-time visibility.
+**Dashboard side:** The SSE stream already forwards bus messages. The dashboard subscribes to `agent.tool_call`, formats it into human-readable text, and shows a live feed per agent. This replaces the current "in_progress" black box with real-time visibility.
 
 **Three levels of awareness (Don Norman):**
 - **Glance:** Agent card shows green/red dot + current action text
@@ -204,22 +230,34 @@ The workspace cloning/isolation layer is removed entirely. DevFleet runs in the 
 |-----------|-------|---------|
 | `ProjectContextProvider` port | use-cases/ports | Interface for project context |
 | `NodeProjectContextProvider` | adapters/context | Reads CLAUDE.md, detects config, builds file tree |
-| `GoalArtifactChain` | use-cases | Collects prior phase artifacts for a goal |
-| `AgentActivityEmitter` | (inside ClaudeAgentSdkAdapter) | Parses stream events into human-readable actions |
+| `ArtifactChain` port | use-cases/ports | Interface for gathering prior phase artifacts |
+| `GoalArtifactChain` | use-cases | Implements ArtifactChain — returns structured `PhaseArtifact[]` |
+| `AgentPromptBuilder` port | use-cases/ports | Interface for building agent system prompts |
+| `DefaultAgentPromptBuilder` | use-cases | Combines role prompt + project context + prior artifacts into one prompt. Used by all plugins. |
+| `AgentToolCallMessage` | entities/Message | New structured message type for agent tool calls |
+
+## Pre-requisite: Bug Fix (Do Before Rewrite)
+
+The pipeline advancement bug must be fixed independently, before the rewrite begins. This is a bug, not a design decision — don't let it sit unfixed while the rewrite is in progress.
+
+| Bug | Fix |
+|-----|-----|
+| `SupervisorPlugin.handleTaskFailed` never advances pipeline | Extract `advancePipeline(goalId)` method, call it after discard |
+| `SupervisorPlugin.handleBudgetExceeded` never advances | Same — call `advancePipeline` after discard |
+| `SupervisorPlugin.handleAgentStuck` never advances | Same — call `advancePipeline` after discard |
+| `SupervisorPlugin.handleReviewRejected` discard path never advances | Same — call `advancePipeline` after discard |
 
 ## What Gets Changed
 
 | Component | Change |
 |-----------|--------|
-| Every agent plugin | Uses `ProjectContextProvider` + `GoalArtifactChain` for context. Same pattern, no special cases. |
-| `DeveloperPlugin` | Adds `artifactRepo` dependency (matches other plugins). Receives project context + prior artifacts. |
-| `SupervisorPlugin.handleTaskFailed` | Advances pipeline after discarding (bug fix). Also: `handleBudgetExceeded`, `handleAgentStuck`, `handleReviewRejected` discard path. |
+| Every agent plugin | Replaces custom prompt assembly with single `AgentPromptBuilder.build()` call. |
+| `DeveloperPlugin` | No longer special — uses same `promptBuilder` as all other plugins. |
 | `SupervisorPlugin.handleGoalCreated` | Accepts optional phase list from goal. Creates tasks only for requested phases. |
-| `ClaudeAgentSdkAdapter` | Parses `stream_event` messages for tool calls. Emits `agent.activity` on the bus. |
-| `composition-root` | Removes workspace wiring. Adds `ProjectContextProvider` and `GoalArtifactChain`. Injects them into all plugins. |
+| `ClaudeAgentSdkAdapter` | Parses `stream_event` messages for tool calls. Emits structured `agent.tool_call` on the bus. |
+| `composition-root` | Removes workspace wiring. Creates `ProjectContextProvider`, `GoalArtifactChain`, `AgentPromptBuilder`. Injects `promptBuilder` into all plugins. |
 | CLI (`index.ts`) | Removes readline prompt. Starts API server + dashboard. Prints URL. |
 | `CreateGoalFromCeo` | Accepts optional `phases` parameter. |
-| Dashboard goal form | Adds phase picker (checkboxes) and retry-with-hint button on failed tasks. |
 
 ## What Stays Untouched
 
