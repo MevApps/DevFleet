@@ -1,3 +1,4 @@
+import { describe, it, expect, vi } from "vitest"
 import { SupervisorPlugin, type SupervisorPluginDeps } from "../../src/adapters/plugins/agents/SupervisorPlugin"
 import { InMemoryBus } from "../../src/adapters/messaging/InMemoryBus"
 import { InMemoryTaskRepo } from "../../src/adapters/storage/InMemoryTaskRepo"
@@ -55,6 +56,48 @@ describe("SupervisorPlugin", () => {
     expect(decomposeCalled).toBe(true)
   })
 
+  it("advances pipeline after task.failed", async () => {
+    const taskRepo = new InMemoryTaskRepo()
+    const goalId = createGoalId("g-1")
+
+    const { createTask } = await import("../../src/entities/Task")
+    const { createBudget } = await import("../../src/entities/Budget")
+
+    // Create a code task (will fail) and a review task (should be assigned next)
+    await taskRepo.create(createTask({
+      id: createTaskId("t-code"), goalId, description: "code task",
+      phase: "code", budget: createBudget({ maxTokens: 1000, maxCostUsd: 0.1 }),
+      status: "in_progress", branch: "devfleet/task-t-code",
+    }))
+    await taskRepo.create(createTask({
+      id: createTaskId("t-review"), goalId, description: "review task",
+      phase: "review", budget: createBudget({ maxTokens: 1000, maxCostUsd: 0.1 }),
+    }))
+
+    let assignCalled = false
+    let assignedTaskId = ""
+    const plugin = createTestPlugin({
+      taskRepo,
+      discardBranch: { execute: async () => ({ ok: true, value: undefined }) } as any,
+      assignTask: {
+        execute: async (taskId: any) => {
+          assignCalled = true
+          assignedTaskId = taskId
+          return { ok: true, value: undefined }
+        },
+      } as any,
+    })
+
+    await plugin.handle({
+      id: createMessageId(), type: "task.failed",
+      taskId: createTaskId("t-code"), agentId: createAgentId("dev-1"),
+      reason: "error_max_turns", timestamp: new Date(),
+    })
+
+    expect(assignCalled).toBe(true)
+    expect(assignedTaskId).toBe("t-review")
+  })
+
   it("handles review.approved by calling EvaluateKeepDiscard then MergeBranch", async () => {
     let mergeCalled = false
     const taskRepo = new InMemoryTaskRepo()
@@ -92,7 +135,7 @@ describe("SupervisorPlugin", () => {
 
 function createTestPlugin(overrides: Partial<SupervisorPluginDeps> = {}): SupervisorPlugin {
   const mockDetectProjectConfig = {
-    execute: jest.fn().mockResolvedValue({
+    execute: vi.fn().mockResolvedValue({
       language: "typescript",
       buildCommand: "npm run build",
       testCommand: "npm test",

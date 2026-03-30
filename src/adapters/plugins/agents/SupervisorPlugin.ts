@@ -198,8 +198,32 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
       }
     }
 
-    // Find next queued task in pipeline order (supports multiple tasks per phase)
-    const allTasks = await this.deps.taskRepo.findByGoalId(task.goalId)
+    await this.advancePipeline(task.goalId)
+  }
+
+  private async handleTaskFailed(taskId: TaskId, reason: string): Promise<void> {
+    const task = await this.deps.taskRepo.findById(taskId)
+    if (!task) return
+
+    if (task.branch) {
+      await this.deps.discardBranch.execute(taskId, reason)
+    } else {
+      // Non-code task failed — mark as discarded directly (no branch to clean up)
+      const updated = { ...task, status: "discarded" as const, version: task.version + 1 }
+      await this.deps.taskRepo.update(updated)
+    }
+
+    if (task.assignedTo) {
+      try {
+        await this.deps.agentRegistry.updateStatus(task.assignedTo, "idle", null)
+      } catch { /* Agent may not exist in test scenarios */ }
+    }
+
+    await this.advancePipeline(task.goalId)
+  }
+
+  private async advancePipeline(goalId: GoalId): Promise<void> {
+    const allTasks = await this.deps.taskRepo.findByGoalId(goalId)
     const phases = this.deps.pipelineConfig.phases
     const queued = allTasks
       .filter(t => t.status === "queued")
@@ -214,23 +238,10 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
       await this.deps.bus.emit({
         id: createMessageId(),
         type: "goal.completed",
-        goalId: task.goalId,
+        goalId,
         costUsd: 0, // Phase 4: calculate from metrics
         timestamp: new Date(),
       })
-    }
-  }
-
-  private async handleTaskFailed(taskId: TaskId, reason: string): Promise<void> {
-    const task = await this.deps.taskRepo.findById(taskId)
-    if (!task) return
-
-    if (task.branch) {
-      await this.deps.discardBranch.execute(taskId, reason)
-    } else {
-      // Non-code task failed — mark as discarded directly (no branch to clean up)
-      const updated = { ...task, status: "discarded" as const, version: task.version + 1 }
-      await this.deps.taskRepo.update(updated)
     }
   }
 
@@ -275,14 +286,20 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
       await this.deps.assignTask.execute(taskId, ROLES.DEVELOPER)
     } else if (result.value === "discard") {
       await this.deps.discardBranch.execute(taskId, "max retries exceeded")
+      const task = await this.deps.taskRepo.findById(taskId)
+      if (task) await this.advancePipeline(task.goalId)
     }
   }
 
   private async handleBudgetExceeded(taskId: TaskId): Promise<void> {
+    const task = await this.deps.taskRepo.findById(taskId)
     await this.deps.discardBranch.execute(taskId, "budget exceeded")
+    if (task) await this.advancePipeline(task.goalId)
   }
 
   private async handleAgentStuck(taskId: TaskId): Promise<void> {
+    const task = await this.deps.taskRepo.findById(taskId)
     await this.deps.discardBranch.execute(taskId, "agent stuck")
+    if (task) await this.advancePipeline(task.goalId)
   }
 }
