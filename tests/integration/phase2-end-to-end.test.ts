@@ -10,7 +10,7 @@ describe("Phase 2 End-to-End", () => {
 
   beforeEach(async () => {
     system = await buildSystem({
-      workspaceDir: process.cwd(),
+      projectDir: process.cwd(),
       mockMode: true,
     })
     await system.start()

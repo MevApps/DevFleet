@@ -22,7 +22,7 @@ export interface ReviewerPluginDeps {
   readonly promptBuilder: AgentPromptBuilder
   readonly systemPrompt: string
   readonly model: string
-  readonly workspaceDir: string
+  readonly projectDir: string
 }
 
 export class ReviewerPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
@@ -61,7 +61,7 @@ export class ReviewerPlugin implements PluginIdentity, Lifecycle, PluginMessageH
       capabilities: ["file_access" as const, "shell" as const],
       model: this.deps.model,
       budget: task.budget,
-      workingDir: this.deps.workspaceDir,
+      workingDir: this.deps.projectDir,
     }
 
     let content = ""

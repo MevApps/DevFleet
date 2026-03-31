@@ -76,7 +76,7 @@ import type { MessagePort } from "../../use-cases/ports/MessagePort"
 // Config
 // ---------------------------------------------------------------------------
 export interface DevFleetConfig {
-  readonly workspaceDir: string
+  readonly projectDir: string
   readonly mockMode?: boolean
   readonly developerModel?: string
   readonly supervisorModel?: string
@@ -192,8 +192,8 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   const insightRepo = new InMemoryInsightRepository()
   const budgetConfigStore = new InMemoryBudgetConfigStore()
   const alertPreferencesStore = new InMemoryAlertPreferencesStore()
-  const agentPromptStore = new FileSystemAgentPromptStore(join(config.workspaceDir, "agent-prompts"))
-  const skillStore = new FileSystemSkillStore(join(config.workspaceDir, "skills"))
+  const agentPromptStore = new FileSystemAgentPromptStore(join(config.projectDir, "agent-prompts"))
+  const skillStore = new FileSystemSkillStore(join(config.projectDir, "skills"))
   const notificationPort = new NoOpNotificationAdapter()
 
   // -------------------------------------------------------------------------
@@ -201,8 +201,8 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   // -------------------------------------------------------------------------
   const bus = new InMemoryBus()
 
-  const fileSystem: FileSystem = useMock ? createMockFileSystem() : new NodeFileSystem(config.workspaceDir)
-  const shell: ShellExecutor = useMock ? createMockShell() : new NodeShellExecutor(config.workspaceDir)
+  const fileSystem: FileSystem = useMock ? createMockFileSystem() : new NodeFileSystem(config.projectDir)
+  const shell: ShellExecutor = useMock ? createMockShell() : new NodeShellExecutor(config.projectDir)
 
   const detectProjectConfig = new DetectProjectConfig(fileSystem)
 
@@ -219,7 +219,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
 
   const worktreeManager = useMock
     ? new InMemoryWorktreeManager()
-    : new NodeWorktreeManager(shell, config.workspaceDir, shellFactory)
+    : new NodeWorktreeManager(shell, config.projectDir, shellFactory)
 
   // -------------------------------------------------------------------------
   // 4. Use cases
@@ -296,7 +296,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
   // -------------------------------------------------------------------------
   // 8. Prompt builder
   // -------------------------------------------------------------------------
-  const contextProvider = new NodeProjectContextProvider(config.workspaceDir)
+  const contextProvider = new NodeProjectContextProvider(config.projectDir)
   const artifactChain = new GoalArtifactChain(taskRepo, artifactRepo, DEFAULT_PIPELINE.phases)
   const promptBuilder = new ContextAwarePromptBuilder(contextProvider, artifactChain)
 
@@ -321,7 +321,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     model: supervisorModel,
     systemPrompt: supervisorPrompt,
     detectProjectConfig,
-    workspaceDir: config.workspaceDir,
+    projectDir: config.projectDir,
   })
 
   const productPlugin = new ProductPlugin({
@@ -335,7 +335,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     promptBuilder,
     systemPrompt: productPrompt,
     model: developerModel,
-    workspaceDir: config.workspaceDir,
+    projectDir: config.projectDir,
   })
 
   const architectPlugin = new ArchitectPlugin({
@@ -349,7 +349,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     promptBuilder,
     systemPrompt: architectPrompt,
     model: developerModel,
-    workspaceDir: config.workspaceDir,
+    projectDir: config.projectDir,
   })
 
   const developerPlugin = new DeveloperPlugin({
@@ -363,7 +363,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     bus,
     worktreeManager,
     agentRegistry,
-    workspaceDir: config.workspaceDir,
+    projectDir: config.projectDir,
   })
 
   const reviewerPlugin = new ReviewerPlugin({
@@ -377,7 +377,7 @@ export async function buildSystem(config: DevFleetConfig): Promise<DevFleetSyste
     promptBuilder,
     systemPrompt: reviewerPrompt,
     model: reviewerModel,
-    workspaceDir: config.workspaceDir,
+    projectDir: config.projectDir,
   })
 
   const opsPlugin = new OpsPlugin({

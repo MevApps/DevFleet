@@ -76,7 +76,7 @@ describe("DeveloperPlugin", () => {
       model: "claude-3-5-sonnet-20241022",
       bus,
       worktreeManager: mockWorktree,
-      workspaceDir: "/tmp/workspace",
+      projectDir: "/tmp/project",
     })
   })
 
@@ -255,7 +255,7 @@ describe("DeveloperPlugin – worktree isolation", () => {
       model: "claude-3-5-sonnet-20241022",
       bus,
       worktreeManager: mockWorktree,
-      workspaceDir: "/tmp/workspace",
+      projectDir: "/tmp/project",
     })
 
     await pluginWithWorktree.handle({
@@ -309,7 +309,7 @@ describe("DeveloperPlugin – worktree isolation", () => {
       model: "claude-3-5-sonnet-20241022",
       bus,
       worktreeManager: mockWorktree,
-      workspaceDir: "/tmp/workspace",
+      projectDir: "/tmp/project",
     })
 
     // Handle two separate tasks

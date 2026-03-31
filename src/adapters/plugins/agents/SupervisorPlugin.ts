@@ -36,7 +36,7 @@ export interface SupervisorPluginDeps {
   readonly model: string
   readonly systemPrompt: string
   readonly detectProjectConfig: DetectProjectConfig
-  readonly workspaceDir: string
+  readonly projectDir: string
 }
 
 export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
@@ -115,7 +115,7 @@ export class SupervisorPlugin implements PluginIdentity, Lifecycle, PluginMessag
     const phaseTask: PhaseTask = {
       systemPrompt: this.deps.systemPrompt,
       taskDescription: `Decompose this goal into tasks. Return a JSON array of {description, phase} objects.\nPhases available: ${this.deps.pipelineConfig.phases.join(", ")}\n\nGoal: ${description}`,
-      workingDir: this.deps.workspaceDir,
+      workingDir: this.deps.projectDir,
       capabilities: [],
       model: this.deps.model,
     }

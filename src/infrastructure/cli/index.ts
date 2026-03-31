@@ -5,7 +5,7 @@ import { createServer } from "../http/createServer"
 import { DashboardProcess } from "./DashboardProcess"
 import { subscribeProgressLogger } from "./ProgressLogger"
 
-const WORKSPACE_DIR = process.env["WORKSPACE_DIR"] ?? process.cwd()
+const PROJECT_DIR = process.env["PROJECT_DIR"] ?? process.cwd()
 const MOCK_MODE = process.env["DEVFLEET_MOCK"] === "true"
 
 async function main(): Promise<void> {
@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   }
 
   const system = await buildSystem({
-    workspaceDir: WORKSPACE_DIR,
+    projectDir: PROJECT_DIR,
     mockMode: MOCK_MODE,
     developerModel: process.env["DEVELOPER_MODEL"] ?? "claude-sonnet-4-20250514",
     supervisorModel: process.env["SUPERVISOR_MODEL"] ?? "claude-sonnet-4-20250514",

@@ -53,7 +53,7 @@ maybe("Self-Test: DevFleet on DevFleet", () => {
     console.log(`  Detected project: ${detected.language} (build: ${detected.buildCommand}, test: ${detected.testCommand})`)
 
     system = await buildSystem({
-      workspaceDir: clonePath,
+      projectDir: clonePath,
       supervisorModel: "claude-opus-4-20250514",
       reviewerModel: "claude-opus-4-20250514",
       developerModel: "claude-sonnet-4-20250514",

@@ -170,7 +170,7 @@ function createTestPlugin(overrides: Partial<SupervisorPluginDeps> = {}): Superv
     maxRetries: 3,
     model: "claude-opus-4-6",
     systemPrompt: "You are a supervisor.",
-    workspaceDir: "/tmp/workspace",
+    projectDir: "/tmp/project",
   }
   return new SupervisorPlugin({ ...defaults, ...overrides })
 }

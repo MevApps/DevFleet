@@ -78,7 +78,7 @@ describe("End-to-end integration: Developer agent completes a task", () => {
       model: "claude-test",
       bus,
       worktreeManager: mockWorktree,
-      workspaceDir: "/tmp/test-workspace",
+      projectDir: "/tmp/test-project",
     })
 
     // Trigger via task.assigned message

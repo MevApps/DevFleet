@@ -21,7 +21,7 @@ export interface DeveloperPluginDeps {
   readonly bus: MessagePort
   readonly worktreeManager: WorktreeManager
   readonly agentRegistry: AgentRegistry
-  readonly workspaceDir: string
+  readonly projectDir: string
 }
 
 export class DeveloperPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {

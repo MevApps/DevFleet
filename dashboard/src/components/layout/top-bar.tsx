@@ -1,7 +1,6 @@
 "use client"
 import { useUIStore } from "@/lib/ui-store"
 import { useDashboardStore } from "@/lib/store"
-import { useWorkspaceStore } from "@/lib/workspace-store"
 import { formatCurrency } from "@/lib/utils/format"
 import { cn } from "@/lib/utils"
 import { ChevronsRight, Bell, Sun, Moon } from "lucide-react"
@@ -13,15 +12,12 @@ export function TopBar() {
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
   const agents = useDashboardStore((s) => s.agents)
   const unreadAlertCount = useDashboardStore((s) => s.unreadAlertCount)
-  const run = useWorkspaceStore((s) => s.run)
-  const costUsd = useWorkspaceStore((s) => s.costUsd)
 
   const busyAgents = agents.filter((a) => a.status === "busy").length
   const totalAgents = agents.length
   const attentionCount = useDashboardStore((s) =>
     s.goals.filter((g) => g.status === "blocked" || g.status === "failed").length
   )
-  const wsActive = run?.status === "active"
 
   return (
     <header
@@ -51,19 +47,10 @@ export function TopBar() {
               <span className="font-mono font-bold">{attentionCount}</span> attention
             </FleetChip>
           )}
-          <FleetChip>
-            <span className="font-mono font-bold">{formatCurrency(costUsd)}</span> spent
-          </FleetChip>
         </div>
       </div>
 
       <div className="flex items-center gap-2.5">
-        {wsActive && (
-          <span className="px-2.5 py-1 rounded-md text-[12px] font-medium bg-status-green-surface text-status-green-fg">
-            Workspace Active
-          </span>
-        )}
-
         <button className="relative p-1.5 rounded-lg border border-border text-text-secondary hover:bg-bg-hover">
           <Bell size={16} />
           {unreadAlertCount > 0 && (

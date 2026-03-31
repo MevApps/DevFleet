@@ -15,11 +15,9 @@ describe('getStatusColor', () => {
     expect(getStatusColor('deploying')).toBe('zinc')
     expect(getStatusColor('')).toBe('zinc')
   })
-  it('maps workspace statuses to colors', () => {
+  it('maps additional statuses to colors', () => {
     expect(getStatusColor('delivered')).toBe('green')
-    expect(getStatusColor('cloning')).toBe('blue')
-    expect(getStatusColor('installing')).toBe('blue')
-    expect(getStatusColor('detecting')).toBe('blue')
-    expect(getStatusColor('stopped_dirty')).toBe('yellow')
+    expect(getStatusColor('active')).toBe('blue')
+    expect(getStatusColor('queued')).toBe('orange')
   })
 })

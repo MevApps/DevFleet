@@ -22,7 +22,7 @@ export interface ProductPluginDeps {
   readonly promptBuilder: AgentPromptBuilder
   readonly systemPrompt: string
   readonly model: string
-  readonly workspaceDir: string
+  readonly projectDir: string
 }
 
 export class ProductPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
@@ -61,7 +61,7 @@ export class ProductPlugin implements PluginIdentity, Lifecycle, PluginMessageHa
       capabilities: [],
       model: this.deps.model,
       budget: task.budget,
-      workingDir: this.deps.workspaceDir,
+      workingDir: this.deps.projectDir,
     }
 
     let content = ""

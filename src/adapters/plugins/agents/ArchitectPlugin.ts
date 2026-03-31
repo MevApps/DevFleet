@@ -22,7 +22,7 @@ export interface ArchitectPluginDeps {
   readonly promptBuilder: AgentPromptBuilder
   readonly systemPrompt: string
   readonly model: string
-  readonly workspaceDir: string
+  readonly projectDir: string
 }
 
 export class ArchitectPlugin implements PluginIdentity, Lifecycle, PluginMessageHandler {
@@ -61,7 +61,7 @@ export class ArchitectPlugin implements PluginIdentity, Lifecycle, PluginMessage
       capabilities: [],
       model: this.deps.model,
       budget: task.budget,
-      workingDir: this.deps.workspaceDir,
+      workingDir: this.deps.projectDir,
     }
 
     let content = ""

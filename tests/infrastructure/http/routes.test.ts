@@ -12,7 +12,7 @@ describe("API routes", () => {
   let app: Express
 
   beforeEach(async () => {
-    system = await buildSystem({ workspaceDir: "/tmp/test", mockMode: true })
+    system = await buildSystem({ projectDir: "/tmp/test", mockMode: true })
     app = createServer(system.dashboardDeps)
     await system.start()
   })

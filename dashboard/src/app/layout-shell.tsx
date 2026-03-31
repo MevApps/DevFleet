@@ -6,9 +6,7 @@ import { TopBar } from "@/components/layout/top-bar"
 import { InspectorPanel } from "@/components/layout/inspector-panel"
 import { useSSE } from "@/lib/useSSE"
 import { useUIStore } from "@/lib/ui-store"
-import { useWorkspaceStore } from "@/lib/workspace-store"
 import { useDashboardStore } from "@/lib/store"
-import { api } from "@/lib/api"
 
 function logFetchError(label: string) {
   return (e: unknown) => console.error(`[LayoutShell] ${label} failed`, e)
@@ -21,7 +19,6 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   const fetchPipeline = useDashboardStore((s) => s.fetchPipeline)
   const fetchMetrics = useDashboardStore((s) => s.fetchMetrics)
   const fetchAlerts = useDashboardStore((s) => s.fetchAlerts)
-  const wsRun = useWorkspaceStore((s) => s.run)
 
   useEffect(() => {
     document.documentElement.classList.remove("dark", "light")
@@ -34,21 +31,13 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
     if (saved) useUIStore.getState().setTheme(saved)
   }, [])
 
+  // Initial data fetch
   useEffect(() => {
-    api.workspaceStatus()
-      .then(useWorkspaceStore.getState().setStatus)
-      .catch(() => useWorkspaceStore.getState().clear())
-  }, [])
-
-  // Consolidated data fetch when workspace is active
-  useEffect(() => {
-    if (wsRun?.status === "active") {
-      fetchLiveFloor().catch(logFetchError("fetchLiveFloor"))
-      fetchPipeline().catch(logFetchError("fetchPipeline"))
-      fetchMetrics().catch(logFetchError("fetchMetrics"))
-      fetchAlerts().catch(logFetchError("fetchAlerts"))
-    }
-  }, [wsRun?.status, fetchLiveFloor, fetchPipeline, fetchMetrics, fetchAlerts])
+    fetchLiveFloor().catch(logFetchError("fetchLiveFloor"))
+    fetchPipeline().catch(logFetchError("fetchPipeline"))
+    fetchMetrics().catch(logFetchError("fetchMetrics"))
+    fetchAlerts().catch(logFetchError("fetchAlerts"))
+  }, [fetchLiveFloor, fetchPipeline, fetchMetrics, fetchAlerts])
 
   return (
     <div className="flex h-screen overflow-hidden">

@@ -18,7 +18,6 @@ import QualityPage from "@/app/quality/page"
 import PerformancePage from "@/app/analytics/performance/page"
 import InsightsPage from "@/app/insights/page"
 import SystemPage from "@/app/system/page"
-import { WorkspaceSetupForm } from "./workspace-setup-form"
 
 export function ActiveFloor() {
   const activeSection = useFloorStore((s) => s.activeSection)
@@ -45,8 +44,8 @@ export function ActiveFloor() {
       )
     case "settings":
       return (
-        <SecondaryViewWrapper title="Workspace Settings">
-          <WorkspaceSetupForm />
+        <SecondaryViewWrapper title="Settings">
+          <p className="text-text-muted text-sm">Settings coming soon.</p>
         </SecondaryViewWrapper>
       )
     case "floor":

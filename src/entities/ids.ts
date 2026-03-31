@@ -8,7 +8,6 @@ export type ArtifactId = string & { readonly __brand: "ArtifactId" }
 export type MessageId = string & { readonly __brand: "MessageId" }
 export type EventId = string & { readonly __brand: "EventId" }
 export type ProjectId = string & { readonly __brand: "ProjectId" }
-export type WorkspaceRunId = string & { readonly __brand: "WorkspaceRunId" }
 
 // Factory functions
 export function createTaskId(value?: string): TaskId {
@@ -40,9 +39,6 @@ export function createProjectId(value?: string): ProjectId {
   return (value ?? randomUUID()) as ProjectId
 }
 
-export function createWorkspaceRunId(value?: string): WorkspaceRunId {
-  return (value ?? randomUUID()) as WorkspaceRunId
-}
 
 export type InsightId = string & { readonly __brand: "InsightId" }
 

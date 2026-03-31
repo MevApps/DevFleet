@@ -3,10 +3,9 @@
 import { useEffect } from "react"
 import { useUIStore } from "@/lib/ui-store"
 import { useFloorStore } from "@/lib/floor-store"
-import { useWorkspaceStore } from "@/lib/workspace-store"
 import { useDashboardStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
-import { formatCurrency, sortGoalsByRecency } from "@/lib/utils/format"
+import { sortGoalsByRecency } from "@/lib/utils/format"
 import { getStatusColor } from "@/lib/registry/statuses"
 import type { GoalDTO, TaskDTO } from "@/lib/types"
 import { getGoalTasks, computeTaskProgress } from "@/lib/hooks/use-goal-tasks"
@@ -23,14 +22,11 @@ export function AppSidebar() {
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
   const goals = useDashboardStore((s) => s.goals)
-  const run = useWorkspaceStore((s) => s.run)
-  const costUsd = useWorkspaceStore((s) => s.costUsd)
   const focusedGoalId = useFloorStore((s) => s.focusedGoalId)
   const focusGoal = useFloorStore((s) => s.focusGoal)
   const allTasks = useDashboardStore((s) => s.allTasks)
   const setActiveSection = useFloorStore((s) => s.setActiveSection)
 
-  const workspaceBudget = run?.config.maxCostUsd ?? 100
   const sortedGoals = sortGoalsByRecency(goals)
 
   useEffect(() => {
@@ -75,7 +71,7 @@ export function AppSidebar() {
         >
           <Plus size={18} className="text-text-muted" />
           New Goal
-          <kbd className="ml-auto text-[10px] px-1 py-0.5 rounded border border-border text-text-muted">⌘N</kbd>
+          <kbd className="ml-auto text-[10px] px-1 py-0.5 rounded border border-border text-text-muted">&#x2318;N</kbd>
         </button>
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-bg-card text-[13px] text-text-muted cursor-pointer hover:border-border-hover transition-colors">
           <Search size={14} />
@@ -107,9 +103,6 @@ export function AppSidebar() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[13px] font-semibold text-text-primary">MevApps</p>
-            <p className="text-[11px] text-text-muted">
-              {formatCurrency(costUsd)} / {formatCurrency(workspaceBudget)}
-            </p>
           </div>
         </div>
       </div>

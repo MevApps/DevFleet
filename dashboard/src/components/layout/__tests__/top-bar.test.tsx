@@ -3,8 +3,6 @@ import { describe, it, expect, beforeEach } from "vitest"
 import { render, screen } from "@testing-library/react"
 import { TopBar } from "../top-bar"
 import { useUIStore } from "@/lib/ui-store"
-import { useDashboardStore } from "@/lib/store"
-import { useWorkspaceStore } from "@/lib/workspace-store"
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
@@ -18,7 +16,6 @@ describe("TopBar", () => {
   it("renders fleet summary chips", () => {
     render(<TopBar />)
     expect(screen.getByText(/agents/i)).toBeInTheDocument()
-    expect(screen.getByText(/spent/i)).toBeInTheDocument()
   })
 
   it("shows expand button when sidebar is collapsed", () => {

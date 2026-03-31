@@ -1,4 +1,4 @@
-import type { LiveFloorData, PipelineData, MetricsSummary, GoalDTO, FinancialsData, QualityData, TimingsData, InsightSummary, InsightDetail, CeoAlertData, AlertPreferencesData, PluginHealth, WorkspaceStartInput, WorkspaceStatusDTO, TaskDiffDTO } from "./types"
+import type { LiveFloorData, PipelineData, MetricsSummary, GoalDTO, FinancialsData, QualityData, TimingsData, InsightSummary, InsightDetail, CeoAlertData, AlertPreferencesData, PluginHealth, TaskDiffDTO } from "./types"
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3100"
 const BASE = `${API_ORIGIN}/api`
 export const SSE_URL = `${BASE}/events/stream`
@@ -35,9 +35,5 @@ export const api = {
   alertPreferences: () => get<AlertPreferencesData>("/alerts/preferences"),
   updateAlertPreferences: (prefs: AlertPreferencesData) => fetch(`${BASE}/alerts/preferences`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(prefs) }).then(r => r.json() as Promise<{ status: string }>),
   systemHealth: () => get<PluginHealth[]>("/system/health"),
-  workspaceStart: (config: WorkspaceStartInput) => post<{ runId: string }>("/workspace/start", config),
-  workspaceStatus: () => get<WorkspaceStatusDTO>("/workspace/status"),
-  workspaceStop: () => post<{ status: string; clonePath?: string }>("/workspace/stop", {}),
-  workspaceCleanup: () => post<{ status: string }>("/workspace/cleanup", {}),
   taskDiff: (taskId: string) => get<TaskDiffDTO>(`/tasks/${taskId}/diff`),
 }

@@ -2,8 +2,7 @@
 import { useEffect, useRef } from "react"
 import { useDashboardStore } from "./store"
 import { useUIStore } from "./ui-store"
-import { useWorkspaceStore } from "./workspace-store"
-import { SSE_URL, api } from "./api"
+import { SSE_URL } from "./api"
 import type { SSEEvent } from "./types"
 
 const DASHBOARD_REFRESH_TYPES = new Set([
@@ -11,12 +10,6 @@ const DASHBOARD_REFRESH_TYPES = new Set([
   "task.created", "task.assigned", "task.completed", "task.failed",
   "review.approved", "review.rejected",
   "branch.merged", "branch.discarded",
-])
-
-const WORKSPACE_REFRESH_TYPES = new Set([
-  "workspace.status.changed",
-  "workspace.goal.delivered",
-  "workspace.goal.failed",
 ])
 
 export function useSSE() {
@@ -42,11 +35,6 @@ export function useSSE() {
         void fetchLiveFloor()
         void fetchPipeline()
         void fetchMetrics()
-      }
-      if (WORKSPACE_REFRESH_TYPES.has(data.type)) {
-        api.workspaceStatus()
-          .then(useWorkspaceStore.getState().setStatus)
-          .catch(() => useWorkspaceStore.getState().clear())
       }
     }
 
