@@ -19,7 +19,7 @@ export class DashboardProcess {
     const dir = findDashboardDir(rootDir)
     if (!dir) return null
 
-    const child = spawn("npx", ["next", "start", "-p", String(port)], {
+    const child = spawn("npx", ["next", "dev", "-p", String(port)], {
       cwd: dir,
       stdio: "ignore",
       env: { ...process.env, PORT: String(port) },
@@ -75,7 +75,7 @@ function findDashboardDir(rootDir?: string): string | null {
       ]
   for (const dir of candidates) {
     const resolved = resolve(dir)
-    if (existsSync(join(resolved, ".next"))) return resolved
+    if (existsSync(join(resolved, "package.json"))) return resolved
   }
   return null
 }
