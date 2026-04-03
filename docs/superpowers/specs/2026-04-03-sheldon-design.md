@@ -53,7 +53,7 @@ sheldon/
 │   ├── services/          # Heartbeat engine, plugin runtime — depends on domain
 │   ├── ui/                # React 19 + Vite dashboard
 │   ├── cli/               # `sheldon` CLI
-│   ├── shared/            # Types, validators, API paths, PluginEventMap
+│   ├── contracts/         # API paths, API types, validators, PluginEventMap — agreements between packages
 │   ├── adapters/
 │   │   ├── storage/       # Drizzle implementations of domain repository ports
 │   │   └── claude-local/  # First agent adapter
@@ -635,7 +635,7 @@ definePlugin({
 ### Published Event Contracts
 
 ```typescript
-// packages/shared/src/plugin-events.ts
+// packages/contracts/src/plugin-events.ts
 interface PluginEventMap {
   'issue.status_changed': { issueId: string, oldStatus: Status, newStatus: Status }
   'run.completed': { runId: string, agentId: string, outcome: Outcome }
