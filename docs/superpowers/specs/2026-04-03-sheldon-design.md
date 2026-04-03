@@ -39,22 +39,24 @@ Sheldon is a self-hosted control plane that orchestrates teams of AI agents orga
 ```
 sheldon/
 ├── packages/
-│   ├── db/                # Drizzle schema, migrations, PGlite embed
-│   ├── server/            # Express 5 API, services, heartbeat engine
+│   ├── domain/            # Entities, ports, use-cases — ZERO framework dependencies
 │   │   └── src/
-│   │       ├── domain/
-│   │       │   ├── entities/
-│   │       │   ├── ports/       # AgentExecutor, SessionCodec, UsageParser, etc.
-│   │       │   └── use-cases/
-│   │       ├── routes/          # REST controllers (one per use-case)
-│   │       ├── streams/         # SSE handlers (separate from REST)
-│   │       ├── services/        # Heartbeat, plugin runtime
-│   │       └── adapters/        # Port implementations
+│   │       ├── entities/        # Company, Agent, Issue, Goal, Learning, etc.
+│   │       ├── ports/           # AgentExecutor, SessionCodec, UsageParser, etc.
+│   │       ├── use-cases/       # Business logic, returns Result<T, E>
+│   │       └── errors.ts        # Typed domain errors
+│   ├── db/                # Drizzle schema, migrations, PGlite embed
+│   ├── server/            # Express 5 REST routes + SSE streams — thin controllers
+│   │   └── src/
+│   │       ├── routes/          # One file per use-case (checkout-issue.ts, post-comment.ts)
+│   │       └── streams/         # SSE handlers (separate from REST)
+│   ├── services/          # Heartbeat engine, plugin runtime — depends on domain
 │   ├── ui/                # React 19 + Vite dashboard
 │   ├── cli/               # `sheldon` CLI
 │   ├── shared/            # Types, validators, API paths, PluginEventMap
 │   ├── adapters/
-│   │   └── claude-local/  # First adapter
+│   │   ├── storage/       # Drizzle implementations of domain repository ports
+│   │   └── claude-local/  # First agent adapter
 │   └── plugins/
 │       ├── sdk/           # definePlugin(), extension factories
 │       └── examples/
@@ -63,6 +65,8 @@ sheldon/
 ├── package.json           # pnpm workspace root
 └── pnpm-workspace.yaml
 ```
+
+**Package dependency rule:** `domain` imports nothing. `server`, `services`, `adapters` depend on `domain`. `server` and `services` never import each other. `adapters` never import `server`. Dependencies always point inward toward the domain.
 
 ### Tech Stack
 
@@ -76,6 +80,28 @@ sheldon/
 | Real-time | SSE (Server-Sent Events) |
 | Testing | Vitest + Playwright |
 | CLI | Commander.js + tsx |
+
+### Testing Strategy
+
+**Unit tests (Vitest) — domain package:**
+- Entities and use-cases — pure logic, no mocks needed, no I/O
+- Use-cases receive port interfaces, tests provide simple in-memory fakes
+- Every use-case returns `Result<T, E>` — test both ok and error paths
+
+**Integration tests (Vitest + PGlite) — server + services packages:**
+- API routes → use-cases → real database (PGlite in-process, no Docker)
+- Heartbeat lifecycle with mock adapter (fake AgentExecutor that returns canned results)
+- Approval flow end-to-end through the service layer
+- SSE event emission on state changes
+- Do NOT mock the database — PGlite makes real DB tests as fast as mocked ones
+
+**E2E tests (Playwright) — ui package:**
+- Onboarding flow → Mission Control renders
+- Inspector panel open/close, tab switching
+- Approval approve/deny/undo cycle
+- Company switcher
+
+**Test boundaries:** Unit tests cover domain logic. Integration tests cover the wiring between packages. E2E tests cover user-visible workflows. If a bug can be caught by a unit test, don't write an integration test for it.
 
 ---
 
@@ -253,7 +279,65 @@ registry.set('claude_local', () => new ClaudeLocalAdapter())
 
 ---
 
-## 5. API Design
+## 5. Error Handling
+
+### Philosophy
+
+Domain errors are typed values, not thrown exceptions. Use-cases return `Result<T, E>`. Route handlers translate domain errors to HTTP status codes. No try-catch spaghetti.
+
+### Result Type
+
+```typescript
+// packages/domain/src/result.ts
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E }
+```
+
+### Domain Error Examples
+
+```typescript
+// Typed per use-case — errors are part of the domain vocabulary
+type CheckoutError = 'already_checked_out' | 'issue_not_found' | 'budget_exhausted'
+type ApproveError = 'approval_not_found' | 'already_resolved' | 'not_authorized'
+type HireAgentError = 'adapter_not_found' | 'budget_limit_reached' | 'approval_required'
+
+// Use-case signature
+function checkoutIssue(issueId: string, agentId: string): Promise<Result<Issue, CheckoutError>>
+```
+
+### Route Translation
+
+```typescript
+// server/src/routes/checkout-issue.ts — thin controller
+const result = await checkoutIssue(issueId, agentId)
+if (result.ok) return res.status(200).json(result.value)
+
+switch (result.error) {
+  case 'already_checked_out': return res.status(409).json({ error: result.error })
+  case 'issue_not_found':     return res.status(404).json({ error: result.error })
+  case 'budget_exhausted':    return res.status(403).json({ error: result.error })
+}
+```
+
+### Infrastructure Errors
+
+Adapters (DB, Claude CLI, filesystem) catch infrastructure exceptions and translate them to domain errors at the boundary. Infrastructure errors never leak into use-cases.
+
+```typescript
+// adapters/storage/drizzle-issue-repo.ts
+async findById(id: string): Promise<Result<Issue, 'not_found' | 'storage_unavailable'>> {
+  try {
+    const row = await db.select().from(issues).where(eq(issues.id, id))
+    if (!row) return { ok: false, error: 'not_found' }
+    return { ok: true, value: toDomain(row) }
+  } catch (e) {
+    return { ok: false, error: 'storage_unavailable' }
+  }
+}
+```
+
+---
+
+## 6. API Design
 
 Single REST API serving both dashboard UI and agents. Same endpoints, different authorization scopes.
 
@@ -295,25 +379,57 @@ Single REST API serving both dashboard UI and agents. Same endpoints, different 
 └── /health                            # Readiness + liveness probes
 ```
 
+### Route Implementation (One File Per Use-Case)
+
+Route handlers are thin controllers — 5-10 lines each. Parse request, call use-case, translate result to HTTP response. No business logic in routes.
+
+```
+server/src/routes/
+├── create-company.ts        → CreateCompany use-case
+├── checkout-issue.ts        → CheckoutIssue use-case → 409 on already_checked_out
+├── post-comment.ts          → PostComment use-case
+├── approve-action.ts        → ApproveAction use-case
+├── deny-action.ts           → DenyAction use-case
+├── invoke-agent.ts          → InvokeAgent use-case
+├── hire-agent.ts            → HireAgent use-case
+├── create-goal.ts           → CreateGoal use-case
+├── ...
+```
+
 ### SSE Events (Our Differentiator)
+
+Two SSE channels with different concerns:
+
+**Domain events** — for UI state updates (all connected dashboards):
 
 ```
 GET /events/:companyId
 ```
 
-Streams:
-- `agent.heartbeat_started` / `agent.heartbeat_completed`
+- `agent.status_changed` — active/idle/error/paused transitions
 - `issue.status_changed` / `issue.comment_added`
 - `approval.requested` / `approval.resolved`
 - `budget.warning` / `budget.exhausted`
 - `learning.extracted`
-- `agent.stdout_chunk` — live agent output streaming
+
+**Agent stream** — for live transcript (only when Inspector is open):
+
+```
+GET /events/:companyId/agents/:agentId/stream
+```
+
+- `agent.stream.chunk` — raw stdout from the running adapter process
+- Only subscribed when the Inspector panel is open for that agent
+- Not stored as domain events — ephemeral stream data
+- Saves bandwidth: not pushed to every connected dashboard
+
+This separation keeps domain events clean (state transitions only) and treats raw process output as the adapter concern it is.
 
 Paperclip has no real-time equivalent. Their UI polls.
 
 ---
 
-## 6. Dashboard — Mission Control
+## 7. Dashboard — Mission Control
 
 ### UI Philosophy (Norman & Nielsen)
 
@@ -367,7 +483,7 @@ No separate wizard. The CEO agent IS the onboarding:
 
 ---
 
-## 7. Governance & Approvals
+## 8. Governance & Approvals
 
 ### Configurable Governance Policy
 
@@ -410,7 +526,7 @@ Timeout: auto-approve low / auto-deny high (configurable)
 
 ---
 
-## 8. Learning System (Sheldon Exclusive)
+## 9. Learning System (Sheldon Exclusive)
 
 Paperclip has zero organizational learning. This is our biggest differentiator.
 
@@ -480,7 +596,7 @@ Top 5 by confidence score injected into agent system prompt.
 
 ---
 
-## 9. Plugin System
+## 10. Plugin System
 
 ### SDK — Composition Over Configuration
 
@@ -548,7 +664,7 @@ Internal domain events can evolve freely. Only `PluginEventMap` events are the p
 
 ---
 
-## 10. Must-Have Features (From Paperclip Gap Analysis)
+## 11. Must-Have Features (From Paperclip Gap Analysis)
 
 | Feature | Description | Phase |
 |---|---|---|
@@ -563,20 +679,30 @@ Internal domain events can evolve freely. Only `PluginEventMap` events are the p
 
 ---
 
-## 11. Phase Plan
+## 12. Phase Plan
 
-### Phase 1 — Foundation
+### Phase 1 — Foundation (Domain-First)
 **Deliverable: `sheldon start` shows Mission Control with onboarding**
 
-- pnpm monorepo scaffold
-- Drizzle schema — core tables
-- PGlite for local, Postgres for prod
-- Express 5 server with company-scoped routes
+**Domain layer COMPLETE (built first, before any delivery mechanism):**
+- All entities defined: Company, Agent, Goal, Project, Issue, Comment, Document, HeartbeatRun, Approval, Budget, CostEvent, Learning, LearningApplication, Routine, WorkProduct, Skill
+- All ports defined: AgentExecutor, SessionCodec, UsageParser, EnvironmentProbe, SkillSync, ContextEnricher, plus repository ports for every entity
+- All use-case interfaces defined with Result<T, E> signatures (stubs where implementation comes in later phases)
+- Typed domain errors per use-case
+- Result type and shared domain primitives
+
+**Infrastructure wiring:**
+- pnpm monorepo scaffold (domain, db, server, services, ui, cli, shared, adapters)
+- Drizzle schema mirroring domain entities
+- PGlite for local, Postgres connection for prod
+- Express 5 server with thin route controllers calling use-cases
 - Better Auth (local_trusted mode)
 - CLI: `sheldon start`
-- Dashboard skeleton: React 19 + Vite + Radix + Tailwind 4
+
+**Dashboard skeleton:**
+- React 19 + Vite + Radix + Tailwind 4
 - Mission Control empty state → onboarding flow
-- SSE endpoint wired
+- SSE endpoint wired (domain events channel)
 
 ### Phase 2 — Heartbeat Engine
 **Deliverable: Agents wake up and do work**
